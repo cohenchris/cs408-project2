@@ -7,6 +7,7 @@
 #include "utils.h"
 
 #include <dlfcn.h>
+typedef void (*start_routine_type)();
 typedef int (*pthread_create_type)();
 typedef void (*pthread_exit_type)();
 typedef int (*pthread_yield_type)();
@@ -17,7 +18,19 @@ typedef int (*pthread_mutex_lock_type)();
 typedef int (*pthread_mutex_unlock_type)();
 typedef int (*pthread_mutex_trylock_type)();
 
+int g_thread_count = 0;
+
 // Thread Management
+void interpose_start_routine(void *(*start_routine) (void *), void *arg) {
+  // TODO: lock output
+  g_thread_count++;
+  
+  INFO("THREAD CREATED (%d, %d)", g_thread_count, gettid());
+  start_routine(arg);
+  INFO("THREAD EXITED (%d, %d)", g_thread_count, gettid());
+  return;
+}
+
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                    void *(*start_routine) (void *), void *arg) {
   INFO("CALL pthread_create(%x, %x, %x, %x)\n", thread, attr, start_routine, arg);
@@ -25,7 +38,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   pthread_create_type orig_create;
   orig_create = (pthread_create_type)dlsym(RTLD_NEXT, "pthread_create");
 
-  int return_val = orig_create(thread, attr, start_routine, arg);
+  int return_val = orig_create(thread, attr, interpose_start_routine, arg);
   INFO("RETURN pthread_create(%x, %x, %x, %x) = %d\n", thread, attr, start_routine, arg, return_val);
   return return_val;
 }
@@ -35,6 +48,10 @@ void pthread_exit(void *retval) {
   
   pthread_exit_type orig_exit;
   orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
+
+  // TODO: Lock output
+  INFO("THREAD EXITED (%d, %d)", g_thread_count, gettid());
+  return;
 }
 
 int pthread_yield(void) {
