@@ -5,3 +5,6 @@ Cora      -   4.1 and 4.4
 Chris C   -   4.2 and 4.3
 
 Chris T   -   4.5
+
+Notes:
+-Structs for args in pthread_create
