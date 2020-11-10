@@ -18,16 +18,38 @@ typedef int (*pthread_mutex_lock_type)();
 typedef int (*pthread_mutex_unlock_type)();
 typedef int (*pthread_mutex_trylock_type)();
 
+// These mutex functions are all made global so the testing functions can utilize them
+// pthread_mutex_lock
+pthread_mutex_lock_type orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+// pthread_mutex_unlock
+pthread_mutex_unlock_type orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+// pthread_mutex_trylock
+pthread_mutex_trylock_type orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+
+pthread_mutex_t count_lock;
+pthread_mutex_init(&count_lock, NULL);
+pthread_mutex_t print_lock;
+pthread_mutex_init(&print_lock, NULL);
+
 int g_thread_count = 0;
 
 // Thread Management
 void interpose_start_routine(void *(*start_routine) (void *), void *arg) {
-  // TODO: lock output
-  g_thread_count++;
-  
-  INFO("THREAD CREATED (%d, %d)", g_thread_count, gettid());
+  orig_mutex_lock(&count_lock);
+  int count = g_thread_count++;
+  orig_mutex_unlock(&count_lock);
+
+  orig_mutex_lock(&print_lock);
+  INFO("THREAD CREATED (%d, %d)", count, gettid());
+  fflush(stdout);
+  orig_mutex_unlock(&print_lock);
+
   start_routine(arg);
-  INFO("THREAD EXITED (%d, %d)", g_thread_count, gettid());
+
+  orig_mutex_lock(&print_lock);
+  INFO("THREAD EXITED (%d, %d)", count, gettid());
+  fflush(stdout);
+  orig_mutex_unlock(&print_lock);
   return;
 }
 
@@ -103,9 +125,6 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
 int pthread_mutex_lock(pthread_mutex_t *mutex) {
   INFO("CALL pthread_mutex_lock(%x)\n", mutex);
 
-  pthread_mutex_lock_type orig_mutex_lock;
-  orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-
   int return_val = orig_mutex_lock(mutex);
   INFO("RETURN pthread_mutex_lock(%x) = %d\n", mutex), return_val;
   return return_val;
@@ -114,9 +133,6 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
 int pthread_mutex_unlock(pthread_mutex_t *mutex) {
   INFO("CALL pthread_mutex_unlock(%x)\n", mutex);
   
-  pthread_mutex_unlock_type orig_mutex_unlock;
-  orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-
   int return_val = orig_mutex_unlock(mutex);
   INFO("RETURN pthread_mutex_unlock(%x) = %d\n", mutex, return_val);
   return return_val;
@@ -125,9 +141,6 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 int pthread_mutex_trylock(pthread_mutex_t *mutex) {
   INFO("CALL pthread_mutex_trylock(%x)\n", mutex);
   
-  pthread_mutex_trylock_type orig_mutex_trylock;
-  orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
-
   int return_val = orig_mutex_trylock(mutex);
   INFO("RETURN pthread_mutex_trylock(%x) = %d\n", mutex, return_val);
   return return_val;
