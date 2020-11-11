@@ -5,10 +5,10 @@
 - Complete
 
 ### 4.3 - Stacktrace
-- TODO: only include target program in trace (figure out which to omit)
+- Complete
 
 ### 4.4 - Random
-- TODO
+- Complete
 
 ### 4.5 - PCT Scheduling
 - TODO
