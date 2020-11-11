@@ -9,6 +9,10 @@
 
 #include <semaphore.h>
 
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
+#include <stdio.h>
+
 #include "testlib.h"
 #include "utils.h"
 
@@ -40,8 +44,7 @@ typedef struct arg_struct {
 //////////////////// STACKTRACE ////////////////////
 ////////////////////////////////////////////////////
 
-void stack_trace() {
-  return;
+void stacktrace() {
 }
 
 ////////////////////////////////////////////////////
@@ -81,7 +84,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                    void *(*start_routine) (void *), void *arg) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
@@ -106,7 +109,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 void pthread_exit(void *retval) {
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_exit(%p)\n", retval);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
   
@@ -126,7 +129,7 @@ void pthread_exit(void *retval) {
 int pthread_yield(void) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_yield()\n");
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
@@ -147,7 +150,7 @@ int pthread_yield(void) {
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_cond_wait(%p, %p)\n", cond, mutex);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
   
@@ -167,7 +170,7 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
 int pthread_cond_signal(pthread_cond_t *cond) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_signal(%p)\n", cond);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
   
@@ -187,7 +190,7 @@ int pthread_cond_signal(pthread_cond_t *cond) {
 int pthread_cond_broadcast(pthread_cond_t *cond) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_broadcast(%p)\n", cond);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
   
@@ -208,7 +211,7 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
 int pthread_mutex_lock(pthread_mutex_t *mutex) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_lock(%p)\n", mutex);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
@@ -228,7 +231,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
 int pthread_mutex_unlock(pthread_mutex_t *mutex) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_unlock(%p)\n", mutex);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
@@ -248,7 +251,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 int pthread_mutex_trylock(pthread_mutex_t *mutex) {
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_trylock(%p)\n", mutex);
-  stack_trace();
+  stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
