@@ -48,6 +48,16 @@ void stacktrace() {
 }
 
 ////////////////////////////////////////////////////
+//////////////////// ALGORITHMS ////////////////////
+////////////////////////////////////////////////////
+
+void run_algorithm() {
+  if (get_algorithm_ID() == 1) {
+    usleep((rand()%1000) * 1000);
+  }
+}
+
+////////////////////////////////////////////////////
 ////////////////////////////////////////////////////
 
 // Thread Management
@@ -58,16 +68,20 @@ void *interpose_start_routine(void *argument) {
   void *arg = arguments->struct_arg;
 
   sem_wait(&g_count_lock);
-  int count = g_thread_count++;
+  int count = ++g_thread_count;
   sem_post(&g_count_lock);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("THREAD CREATED (%d, %ld)\n", count, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
-
+  
   // Execute the function for the thread as normal
   start_routine(arg);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("THREAD EXITED (%d, %ld)\n", count, gettid());
@@ -82,12 +96,6 @@ void *interpose_start_routine(void *argument) {
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                    void *(*start_routine) (void *), void *arg) {
-  sem_wait(&g_print_lock);
-  INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
-  stacktrace();
-  fflush(stdout);
-  sem_post(&g_print_lock);
-
   pthread_create_type orig_create;
   orig_create = (pthread_create_type)dlsym(RTLD_NEXT, "pthread_create");
 
@@ -96,47 +104,63 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   args->struct_func = start_routine;
   args->struct_arg = arg;
 
+  run_algorithm()
+
+  sem_wait(&g_print_lock);
+  INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
+  stacktrace();
+  fflush(stdout);
+  sem_post(&g_print_lock);
+
   int return_val = orig_create(thread, attr, &interpose_start_routine, (void *)args);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_create(%p, %p, %p, %p) = %d\n", thread, attr, start_routine, arg, return_val);
   fflush(stdout);
   sem_post(&g_print_lock);
-
   return return_val;
 }
 
 void pthread_exit(void *retval) {
+  pthread_exit_type orig_exit;
+  orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
+
+  run_algorithm()
+
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_exit(%p)\n", retval);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
-  
-  pthread_exit_type orig_exit;
-  orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
 
-  orig_exit(retval);
+  run_algorithm()
 
   sem_wait(&g_print_lock);  
   INFO("THREAD EXITED (%d, %ld)", g_thread_count, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
 
+  orig_exit(retval);
   return;
 }
 
 int pthread_yield(void) {
+  pthread_yield_type orig_yield;
+  orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
+
+  run_algorithm()
+
   sem_wait(&g_print_lock);
   INFO("CALL pthread_yield()\n");
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  pthread_yield_type orig_yield;
-  orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
-
   int return_val = orig_yield();
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_yield() = %d\n", return_val);
@@ -148,16 +172,20 @@ int pthread_yield(void) {
 
 // Condition variables
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
+  pthread_cond_wait_type orig_cond_wait;
+  orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
+
+  run_algorithm()
+
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_cond_wait(%p, %p)\n", cond, mutex);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
-  
-  pthread_cond_wait_type orig_cond_wait;
-  orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
 
   int return_val = orig_cond_wait(cond, mutex);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_cond_wait(%p, %p) = %d\n", cond, mutex, return_val);
@@ -168,16 +196,20 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
 }
 
 int pthread_cond_signal(pthread_cond_t *cond) {
+  pthread_cond_signal_type orig_cond_signal;
+  orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
+  
+  run_algorithm()
+
   sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_signal(%p)\n", cond);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
-  
-  pthread_cond_signal_type orig_cond_signal;
-  orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
 
   int return_val = orig_cond_signal(cond);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_cond_signal(%p) = %d\n", cond, return_val);
@@ -188,16 +220,20 @@ int pthread_cond_signal(pthread_cond_t *cond) {
 }
 
 int pthread_cond_broadcast(pthread_cond_t *cond) {
+  pthread_cond_broadcast_type orig_cond_broadcast;
+  orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
+
+  run_algorithm()
+
   sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_broadcast(%p)\n", cond);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
-  
-  pthread_cond_broadcast_type orig_cond_broadcast;
-  orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
 
   int return_val = orig_cond_broadcast(cond);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_cond_broadcast(%p) = %d\n", cond, return_val);
@@ -209,16 +245,20 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
 
 // Mutexes
 int pthread_mutex_lock(pthread_mutex_t *mutex) {
+  pthread_mutex_lock_type orig_mutex_lock;
+  orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+  
+  run_algorithm()
+
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_lock(%p)\n", mutex);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  pthread_mutex_lock_type orig_mutex_lock;
-  orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-  
   int return_val = orig_mutex_lock(&mutex);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_lock(%p) = %d\n", mutex, return_val);
@@ -229,16 +269,20 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *mutex) {
+  pthread_mutex_unlock_type orig_mutex_unlock = NULL;
+  orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+
+  run_algorithm()
+
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_unlock(%p)\n", mutex);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  pthread_mutex_unlock_type orig_mutex_unlock = NULL;
-  orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-
   int return_val = orig_mutex_unlock(&mutex);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_unlock(%p) = %d\n", mutex, return_val);
@@ -249,16 +293,20 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 }
 
 int pthread_mutex_trylock(pthread_mutex_t *mutex) {
+  pthread_mutex_trylock_type orig_mutex_trylock;
+  orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+
+  run_algorithm()
+
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_trylock(%p)\n", mutex);
   stacktrace();
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  pthread_mutex_trylock_type orig_mutex_trylock;
-  orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
-
   int return_val = orig_mutex_trylock(&mutex);
+
+  run_algorithm()
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_trylock(%p) = %d\n", mutex, return_val);
