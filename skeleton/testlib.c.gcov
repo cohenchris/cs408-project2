@@ -1,0 +1,366 @@
+        -:    0:Source:testlib.c
+        -:    0:Graph:testlib.gcno
+        -:    0:Data:testlib.gcda
+        -:    0:Runs:2
+        -:    0:Programs:1
+        -:    1:#define _GNU_SOURCE
+        -:    2:#include <assert.h> // Use this, it is your friend!
+        -:    3:#include <libunwind.h>
+        -:    4:#include <stdlib.h>
+        -:    5:
+        -:    6:#include <unistd.h>
+        -:    7:#include <sys/syscall.h>
+        -:    8:#define gettid() syscall(SYS_gettid)
+        -:    9:
+        -:   10:#include <semaphore.h>
+        -:   11:
+        -:   12:#define UNW_LOCAL_ONLY
+        -:   13:#include <libunwind.h>
+        -:   14:#include <stdio.h>
+        -:   15:
+        -:   16:#include "testlib.h"
+        -:   17:#include "utils.h"
+        -:   18:
+        -:   19:#include <dlfcn.h>
+        -:   20:typedef void (*start_routine_type)();
+        -:   21:typedef int (*pthread_create_type)();
+        -:   22:typedef void (*pthread_exit_type)();
+        -:   23:typedef int (*pthread_yield_type)();
+        -:   24:typedef int (*pthread_cond_wait_type)();
+        -:   25:typedef int (*pthread_cond_signal_type)();
+        -:   26:typedef int (*pthread_cond_broadcast_type)();
+        -:   27:typedef int (*pthread_mutex_lock_type)();
+        -:   28:typedef int (*pthread_mutex_unlock_type)();
+        -:   29:typedef int (*pthread_mutex_trylock_type)();
+        -:   30:
+        -:   31:sem_t g_count_lock;
+        -:   32:sem_t g_print_lock;
+        -:   33:
+        -:   34:int g_thread_count = 0;
+        -:   35:int STACKTRACE_THREAD_ID = 0;
+        -:   36:
+        -:   37:// Used for interpose_start_routine in order to pass multiple args
+        -:   38:typedef struct arg_struct {
+        -:   39:  void *(*struct_func) (void *);
+        -:   40:  void *struct_arg;
+        -:   41:} arg_struct;
+        -:   42:
+        -:   43:
+        -:   44:////////////////////////////////////////////////////
+        -:   45://////////////////// STACKTRACE ////////////////////
+        -:   46:////////////////////////////////////////////////////
+        -:   47:
+        2:   48:void stacktrace() {
+        -:   49:    unw_cursor_t cursor;
+        -:   50:    unw_context_t context;
+        -:   51:    
+        -:   52:    // Initialize cursor to current frame for local unwinding.
+        2:   53:    unw_getcontext(&context); // Takes a snapshot of the current CPU registers
+        2:   54:    INFO("got context\n");
+        2:   55:    fflush(stdout);
+        2:   56:    unw_init_local(&cursor, &context);  // Initializes the cursor to beginning of 'context' (HANGING RN)
+        2:   57:    INFO("initialized cursor\n");
+        2:   58:    fflush(stdout);
+        -:   59:
+        2:   60:    INFO("Stacktrace: \n");
+        2:   61:    fflush(stdout);
+        -:   62:    // Unwind frames one by one, going up the frame stack. 
+        2:   63:    while (unw_step(&cursor) > 0) {
+        -:   64:        unw_word_t offset, pc; 
+        8:   65:        unw_get_reg(&cursor, UNW_REG_IP, &pc);
+        8:   66:        if (pc == 0) {
+        -:   67:            break; 
+        -:   68:        }
+       16:   69:        INFO("  0x%lx:", pc);
+        8:   70:        fflush(stdout);
+        -:   71:        char sym[256];
+        8:   72:        if (unw_get_proc_name(&cursor, sym, sizeof(sym), &offset) == 0) {
+       16:   73:            INFO(" (%s+0x%lx)\n", sym, offset);
+        8:   74:            fflush(stdout);
+        -:   75:        } else {
+    #####:   76:            INFO(" -- ERROR: unable to obtain symbol name for this frame\n"); 
+    #####:   77:            fflush(stdout);
+        -:   78:        }
+        -:   79:    }
+        2:   80:}
+        -:   81:
+        -:   82:////////////////////////////////////////////////////
+        -:   83:////////////////////////////////////////////////////
+        -:   84:
+        -:   85:// Thread Management
+        2:   86:void *interpose_start_routine(void *argument) {
+        -:   87:  // Deconstruct the struct into [ function to execute, arg ]
+        2:   88:  struct arg_struct *arguments = argument;
+        2:   89:  void *(*start_routine) (void *) = arguments->struct_func;
+        2:   90:  void *arg = arguments->struct_arg;
+        -:   91:
+        2:   92:  sem_wait(&g_count_lock);
+        2:   93:  int count = g_thread_count++;
+        2:   94:  sem_post(&g_count_lock);
+        -:   95:
+        2:   96:  sem_wait(&g_print_lock);
+        4:   97:  INFO("THREAD CREATED (%d, %ld)\n", count, gettid());
+        2:   98:  fflush(stdout);
+        2:   99:  sem_post(&g_print_lock);
+        -:  100:
+        -:  101:  // Execute the function for the thread as normal
+        2:  102:  start_routine(arg);
+        -:  103:
+        2:  104:  sem_wait(&g_print_lock);
+        4:  105:  INFO("THREAD EXITED (%d, %ld)\n", count, gettid());
+        2:  106:  fflush(stdout);
+        2:  107:  sem_post(&g_print_lock);
+        2:  108:  return NULL;
+        -:  109:}
+        -:  110:
+        -:  111:////////////////////////////////////////////////////
+        -:  112:////////// BEGINNING OF PTHREAD FUNCTIONS //////////
+        -:  113:////////////////////////////////////////////////////
+        -:  114:
+        2:  115:int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
+        -:  116:                   void *(*start_routine) (void *), void *arg) {
+        -:  117:  pthread_create_type orig_create;
+        2:  118:  orig_create = (pthread_create_type)dlsym(RTLD_NEXT, "pthread_create");
+        -:  119:
+        2:  120:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  121:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  122:    return orig_create(thread, attr, start_routine, arg);
+        -:  123:  }
+        -:  124:
+        2:  125:  sem_wait(&g_print_lock);
+        2:  126:  INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
+        2:  127:  fflush(stdout);
+        2:  128:  STACKTRACE_THREAD_ID = gettid();
+        2:  129:  stacktrace();
+        2:  130:  sem_post(&g_print_lock);
+        -:  131:
+        -:  132:  // Struct for multiple args
+        2:  133:  struct arg_struct *args = malloc(sizeof(arg_struct));
+        2:  134:  args->struct_func = start_routine;
+        2:  135:  args->struct_arg = arg;
+        -:  136:
+        2:  137:  int return_val = orig_create(thread, attr, &interpose_start_routine, (void *)args);
+        -:  138:
+        2:  139:  sem_wait(&g_print_lock);  
+        2:  140:  INFO("RETURN pthread_create(%p, %p, %p, %p) = %d\n", thread, attr, start_routine, arg, return_val);
+        2:  141:  fflush(stdout);
+        2:  142:  sem_post(&g_print_lock);
+        -:  143:
+        2:  144:  return return_val;
+        -:  145:}
+        -:  146:
+    #####:  147:void pthread_exit(void *retval) {
+        -:  148:  pthread_exit_type orig_exit;
+    #####:  149:  orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
+        -:  150:
+    #####:  151:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  152:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  153:    orig_exit();
+    #####:  154:    return;
+        -:  155:  }
+        -:  156:
+    #####:  157:  sem_wait(&g_print_lock);  
+    #####:  158:  INFO("CALL pthread_exit(%p)\n", retval);
+    #####:  159:  stacktrace();
+    #####:  160:  fflush(stdout);
+    #####:  161:  sem_post(&g_print_lock);
+        -:  162:
+    #####:  163:  orig_exit(retval);
+        -:  164:
+    #####:  165:  sem_wait(&g_print_lock);  
+    #####:  166:  INFO("THREAD EXITED (%d, %ld)", g_thread_count, gettid());
+    #####:  167:  fflush(stdout);
+    #####:  168:  sem_post(&g_print_lock);
+        -:  169:
+    #####:  170:  return;
+        -:  171:}
+        -:  172:
+    #####:  173:int pthread_yield(void) {
+        -:  174:  pthread_yield_type orig_yield;
+    #####:  175:  orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
+        -:  176:
+    #####:  177:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  178:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  179:    return orig_yield();
+        -:  180:  }
+        -:  181:
+    #####:  182:  sem_wait(&g_print_lock);
+    #####:  183:  INFO("CALL pthread_yield()\n");
+    #####:  184:  stacktrace();
+    #####:  185:  fflush(stdout);
+    #####:  186:  sem_post(&g_print_lock);
+        -:  187:
+    #####:  188:  int return_val = orig_yield();
+        -:  189:
+    #####:  190:  sem_wait(&g_print_lock);  
+    #####:  191:  INFO("RETURN pthread_yield() = %d\n", return_val);
+    #####:  192:  fflush(stdout);
+    #####:  193:  sem_post(&g_print_lock);
+        -:  194:
+    #####:  195:  return return_val;
+        -:  196:}
+        -:  197:
+        -:  198:// Condition variables
+    #####:  199:int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
+        -:  200:  pthread_cond_wait_type orig_cond_wait;
+    #####:  201:  orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
+        -:  202:
+    #####:  203:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  204:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  205:    return orig_cond_wait(cond, mutex);
+        -:  206:  }
+        -:  207:
+    #####:  208:  sem_wait(&g_print_lock);  
+    #####:  209:  INFO("CALL pthread_cond_wait(%p, %p)\n", cond, mutex);
+    #####:  210:  stacktrace();
+    #####:  211:  fflush(stdout);
+    #####:  212:  sem_post(&g_print_lock);
+        -:  213:
+        -:  214:
+    #####:  215:  int return_val = orig_cond_wait(cond, mutex);
+        -:  216:
+    #####:  217:  sem_wait(&g_print_lock);  
+    #####:  218:  INFO("RETURN pthread_cond_wait(%p, %p) = %d\n", cond, mutex, return_val);
+    #####:  219:  fflush(stdout);
+    #####:  220:  sem_post(&g_print_lock);
+        -:  221:
+    #####:  222:  return return_val;
+        -:  223:}
+        -:  224:
+    #####:  225:int pthread_cond_signal(pthread_cond_t *cond) {
+        -:  226:  pthread_cond_signal_type orig_cond_signal;
+    #####:  227:  orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
+        -:  228:
+    #####:  229:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  230:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  231:    return orig_cond_signal(cond);
+        -:  232:  }
+        -:  233:
+    #####:  234:  sem_wait(&g_print_lock);
+    #####:  235:  INFO("CALL pthread_cond_signal(%p)\n", cond);
+    #####:  236:  stacktrace();
+    #####:  237:  fflush(stdout);
+    #####:  238:  sem_post(&g_print_lock);
+        -:  239:
+    #####:  240:  int return_val = orig_cond_signal(cond);
+        -:  241:
+    #####:  242:  sem_wait(&g_print_lock);
+    #####:  243:  INFO("RETURN pthread_cond_signal(%p) = %d\n", cond, return_val);
+    #####:  244:  fflush(stdout);
+    #####:  245:  sem_post(&g_print_lock);
+        -:  246:
+    #####:  247:  return return_val;
+        -:  248:}
+        -:  249:
+    #####:  250:int pthread_cond_broadcast(pthread_cond_t *cond) {
+        -:  251:  pthread_cond_broadcast_type orig_cond_broadcast;
+    #####:  252:  orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
+        -:  253:
+    #####:  254:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  255:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  256:    return orig_cond_broadcast(cond);
+        -:  257:  }
+        -:  258:
+    #####:  259:  sem_wait(&g_print_lock);
+    #####:  260:  INFO("CALL pthread_cond_broadcast(%p)\n", cond);
+    #####:  261:  stacktrace();
+    #####:  262:  fflush(stdout);
+    #####:  263:  sem_post(&g_print_lock);
+        -:  264:
+    #####:  265:  int return_val = orig_cond_broadcast(cond);
+        -:  266:
+    #####:  267:  sem_wait(&g_print_lock);
+    #####:  268:  INFO("RETURN pthread_cond_broadcast(%p) = %d\n", cond, return_val);
+    #####:  269:  fflush(stdout);
+    #####:  270:  sem_post(&g_print_lock);
+        -:  271:
+    #####:  272:  return return_val;
+        -:  273:}
+        -:  274:
+        -:  275:// Mutexes
+       36:  276:int pthread_mutex_lock(pthread_mutex_t *mutex) {
+        -:  277:  pthread_mutex_lock_type orig_mutex_lock;
+       36:  278:  orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+        -:  279:
+       36:  280:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  281:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+       36:  282:    return orig_mutex_lock(mutex);
+        -:  283:  }
+        -:  284:
+    #####:  285:  sem_wait(&g_print_lock);
+    #####:  286:  INFO("CALL pthread_mutex_lock(%p)\n", mutex);
+    #####:  287:  stacktrace();
+    #####:  288:  fflush(stdout);
+    #####:  289:  sem_post(&g_print_lock);
+        -:  290:  
+    #####:  291:  int return_val = orig_mutex_lock(&mutex);
+        -:  292:
+    #####:  293:  sem_wait(&g_print_lock);
+    #####:  294:  INFO("RETURN pthread_mutex_lock(%p) = %d\n", mutex, return_val);
+    #####:  295:  fflush(stdout);
+    #####:  296:  sem_post(&g_print_lock);
+        -:  297:
+    #####:  298:  return return_val;
+        -:  299:}
+        -:  300:
+       36:  301:int pthread_mutex_unlock(pthread_mutex_t *mutex) {
+       36:  302:  pthread_mutex_unlock_type orig_mutex_unlock = NULL;
+       36:  303:  orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+        -:  304:
+       36:  305:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  306:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+       36:  307:    return orig_mutex_unlock(mutex);
+        -:  308:  }
+        -:  309:
+    #####:  310:  sem_wait(&g_print_lock);
+    #####:  311:  INFO("CALL pthread_mutex_unlock(%p)\n", mutex);
+    #####:  312:  stacktrace();
+    #####:  313:  fflush(stdout);
+    #####:  314:  sem_post(&g_print_lock);
+        -:  315:
+    #####:  316:  int return_val = orig_mutex_unlock(&mutex);
+        -:  317:
+    #####:  318:  sem_wait(&g_print_lock);
+    #####:  319:  INFO("RETURN pthread_mutex_unlock(%p) = %d\n", mutex, return_val);
+    #####:  320:  fflush(stdout);
+    #####:  321:  sem_post(&g_print_lock);
+        -:  322:
+    #####:  323:  return return_val;
+        -:  324:}
+        -:  325:
+    #####:  326:int pthread_mutex_trylock(pthread_mutex_t *mutex) {
+        -:  327:  pthread_mutex_trylock_type orig_mutex_trylock;
+    #####:  328:  orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+        -:  329:
+    #####:  330:  if (STACKTRACE_THREAD_ID == gettid()) {
+        -:  331:    // If this thread is currently printing the stacktrace, allow it to use the original function.
+    #####:  332:    return pthread_mutex_trylock(mutex);
+        -:  333:  }
+        -:  334:
+    #####:  335:  sem_wait(&g_print_lock);
+    #####:  336:  INFO("CALL pthread_mutex_trylock(%p)\n", mutex);
+    #####:  337:  stacktrace();
+    #####:  338:  fflush(stdout);
+    #####:  339:  sem_post(&g_print_lock);
+        -:  340:
+    #####:  341:  int return_val = orig_mutex_trylock(&mutex);
+        -:  342:
+    #####:  343:  sem_wait(&g_print_lock);
+    #####:  344:  INFO("RETURN pthread_mutex_trylock(%p) = %d\n", mutex, return_val);
+    #####:  345:  fflush(stdout);
+    #####:  346:  sem_post(&g_print_lock);
+        -:  347:
+    #####:  348:  return return_val;
+        -:  349:}
+        -:  350:
+        -:  351:// This will get called at the start of the target programs main function
+        2:  352:static __attribute__((constructor (200))) void init_testlib(void) {
+        -:  353:  // You can initialize stuff here
+        2:  354:  INFO("Testlib loaded!\n");
+        4:  355:  INFO("Stacktraces is %i\n", get_stacktraces());
+        4:  356:  INFO("Algorithm ID is %i\n", get_algorithm_ID());
+        4:  357:  INFO("Seed is %i\n",(int) get_seed());
+        -:  358:
+        2:  359:  sem_init(&g_print_lock, 0, 1);
+        2:  360:  sem_init(&g_count_lock, 0, 1);
+        2:  361:}
