@@ -1,7 +1,6 @@
 #include<stdio.h>
 #include<pthread.h>
 #include<unistd.h>
-#include<malloc.h>
 
 #define THREAD_NUM 10
 
@@ -19,13 +18,13 @@ void* multiply(void * args) {
 
 int main() {
   pthread_t threads[THREAD_NUM];
-  struct multipliers args[THREAD_NUM];
 
   for (int i = 0; i < THREAD_NUM; i++) {
-    args[i].x = i;
-    args[i].y = i;
+    struct multipliers args;
+    args.x = i;
+    args.y = i;
 
-    pthread_create(&threads[i], NULL, &multiply, (void *)&args[i]);
+    pthread_create(&threads[i], NULL, &multiply, (void *)&args);
   }
 
   for (int i = 0; i < THREAD_NUM; i++) {
