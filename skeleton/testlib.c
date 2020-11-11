@@ -8,10 +8,13 @@
 #define gettid() syscall(SYS_gettid)
 
 #include <semaphore.h>
+#include <string.h>
 
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #include <stdio.h>
+
+#include <stdbool.h>
 
 #include "testlib.h"
 #include "utils.h"
@@ -45,6 +48,23 @@ typedef struct arg_struct {
 //////////////////// STACKTRACE ////////////////////
 ////////////////////////////////////////////////////
 
+// String array of functions to omit from stack trace
+char omit_functions[3][25] = {
+  "interpose_start_routine",
+  "omit",
+  "stacktrace"
+};
+
+bool omit(char * func) {
+  int arr_size = sizeof(omit_functions) / sizeof(omit_functions)[0];
+  for (int i = 0; i < arr_size; i++) {
+    if (strcmp((char *)func, (char *)omit_functions[i]) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void stacktrace() {
     unw_cursor_t cursor;
     unw_context_t context;
@@ -62,14 +82,15 @@ void stacktrace() {
         if (pc == 0) {
             break; 
         }
-        INFO("  0x%lx:", pc);
-        fflush(stdout);
         char sym[256];
         if (unw_get_proc_name(&cursor, sym, sizeof(sym), &offset) == 0) {
-            INFO(" (%s+0x%lx)\n", sym, offset);
+          if (!omit(sym)) {
+            // Makes sure that ONLY stack trace for target program exists.
+            INFO("  0x%lx: (%s+0x%lx)\n", pc, sym, offset);
             fflush(stdout);
+          }
         } else {
-            INFO(" -- ERROR: unable to obtain symbol name for this frame\n"); 
+            INFO("  0x%lx: -- ERROR: unable to obtain symbol name for this frame\n", pc); 
             fflush(stdout);
         }
     }
@@ -159,7 +180,7 @@ void pthread_exit(void *retval) {
 
   orig_exit(retval);
 
-  sem_wait(&g_print_lock);  
+  sem_wait(&g_print_lock);
   INFO("THREAD EXITED (%d, %ld)", g_thread_count, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);

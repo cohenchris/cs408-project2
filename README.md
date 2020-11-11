@@ -5,7 +5,7 @@
 - Complete
 
 ### 4.3 - Stacktrace
-- TODO: only include target program in trace
+- TODO: only include target program in trace (figure out which to omit)
 
 ### 4.4 - Random
 - TODO
