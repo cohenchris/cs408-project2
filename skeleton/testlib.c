@@ -35,7 +35,7 @@ sem_t g_count_lock;
 sem_t g_print_lock;
 
 int g_thread_count = 0;
-int STACKTRACE_THREAD_ID = 0;
+int STACKTRACE_THREAD_ID = -1;
 
 // Used for interpose_start_routine in order to pass multiple args
 typedef struct arg_struct {
@@ -94,13 +94,15 @@ void stacktrace() {
             fflush(stdout);
         }
     }
+    STACKTRACE_THREAD_ID = -1;
 }
 
 ////////////////////////////////////////////////////
 //////////////////// ALGORITHMS ////////////////////
 ////////////////////////////////////////////////////
 
-void run_algorithm(); {
+void run_algorithm() {
+  return;
   if (get_algorithm_ID() == 1) {
     usleep((rand()%1000) * 1000);
   }
@@ -153,13 +155,6 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     return orig_create(thread, attr, start_routine, arg);
   }
 
-  sem_wait(&g_print_lock);
-  INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
-  fflush(stdout);
-  STACKTRACE_THREAD_ID = gettid();
-  stacktrace();
-  sem_post(&g_print_lock);
-
   // Struct for multiple args
   struct arg_struct *args = malloc(sizeof(arg_struct));
   args->struct_func = start_routine;
@@ -169,8 +164,9 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
-  stacktrace();
   fflush(stdout);
+  STACKTRACE_THREAD_ID = gettid();
+  stacktrace();
   sem_post(&g_print_lock);
 
   int return_val = orig_create(thread, attr, &interpose_start_routine, (void *)args);
@@ -402,9 +398,9 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    return pthread_mutex_trylock(mutex);
+    return orig_mutex_trylock(mutex);
   }
-  
+
   run_algorithm();
 
   sem_wait(&g_print_lock);
