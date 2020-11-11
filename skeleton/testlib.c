@@ -113,13 +113,12 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   pthread_create_type orig_create;
   orig_create = (pthread_create_type)dlsym(RTLD_NEXT, "pthread_create");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_create(thread, attr, start_routine, arg);
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -145,14 +144,13 @@ void pthread_exit(void *retval) {
   pthread_exit_type orig_exit;
   orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
 
-  sem_wait(&g_print_lock);  
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
     orig_exit();
-    sem_post(&g_print_lock);
     return;
   }
 
+  sem_wait(&g_print_lock);  
   INFO("CALL pthread_exit(%p)\n", retval);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -173,13 +171,12 @@ int pthread_yield(void) {
   pthread_yield_type orig_yield;
   orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_yield();
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_yield()\n");
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -201,13 +198,12 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
   pthread_cond_wait_type orig_cond_wait;
   orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
 
-  sem_wait(&g_print_lock);  
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_cond_wait(cond, mutex);
   }
 
+  sem_wait(&g_print_lock);  
   INFO("CALL pthread_cond_wait(%p, %p)\n", cond, mutex);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -229,13 +225,12 @@ int pthread_cond_signal(pthread_cond_t *cond) {
   pthread_cond_signal_type orig_cond_signal;
   orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_cond_signal(cond);
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_signal(%p)\n", cond);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -256,13 +251,12 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
   pthread_cond_broadcast_type orig_cond_broadcast;
   orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_cond_broadcast(cond);
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_broadcast(%p)\n", cond);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -284,13 +278,12 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
   pthread_mutex_lock_type orig_mutex_lock;
   orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_mutex_lock(mutex);
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_lock(%p)\n", mutex);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -311,13 +304,12 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
   pthread_mutex_unlock_type orig_mutex_unlock = NULL;
   orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return orig_mutex_unlock(mutex);
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_unlock(%p)\n", mutex);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
@@ -338,13 +330,12 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
   pthread_mutex_trylock_type orig_mutex_trylock;
   orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
-  sem_wait(&g_print_lock);
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
-    sem_post(&g_print_lock);
     return pthread_mutex_trylock(mutex);
   }
 
+  sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_trylock(%p)\n", mutex);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();

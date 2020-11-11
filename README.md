@@ -1,10 +1,19 @@
 # CS408 Project 2
+## Chris Cohen, Cora Chan, Chris Trippel
 
-Cora      -   4.1 and 4.4
+### 4.2 - Interposing pthread calls
+- Complete
 
-Chris C   -   4.2 and 4.3
+### 4.3 - Stacktrace
+- TODO: only include target program in trace
 
-Chris T   -   4.5
+### 4.4 - Random
+- TODO
 
-Notes:
+### 4.5 - PCT Scheduling
+- TODO
+
+
+
+###Notes:
 -Structs for args in pthread_create
