@@ -22,6 +22,5 @@
 ## TODO:
 - 4.5 PCT Scheduling
 - Deadlocks
-- Fixing random seed thing that Chris talked about
 - look into rsleep vs usleep?
 - modify tests.py / coverage.py (We need 100% coverage, run tests in all modes)
