@@ -66,6 +66,7 @@ bool omit(char * func) {
 }
 
 void stacktrace() {
+  if (get_stacktraces()) {
     unw_cursor_t cursor;
     unw_context_t context;
     
@@ -94,7 +95,8 @@ void stacktrace() {
             fflush(stdout);
         }
     }
-    STACKTRACE_THREAD_ID = -1;
+  }
+  STACKTRACE_THREAD_ID = -1;
 }
 
 ////////////////////////////////////////////////////
@@ -104,7 +106,7 @@ void stacktrace() {
 void run_algorithm() {
   return;
   if (get_algorithm_ID() == 1) {
-    usleep((rand()%1000) * 1000);
+    rsleep();
   }
 }
 
