@@ -381,7 +381,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
   stacktrace();
   sem_post(&g_print_lock);
   
-  int return_val = orig_mutex_lock(&mutex);
+  int return_val = orig_mutex_lock(mutex);
 
   run_algorithm();
 
@@ -411,7 +411,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
   stacktrace();
   sem_post(&g_print_lock);
 
-  int return_val = orig_mutex_unlock(&mutex);
+  int return_val = orig_mutex_unlock(mutex);
 
   run_algorithm();
 
@@ -441,7 +441,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
   stacktrace();
   sem_post(&g_print_lock);
 
-  int return_val = orig_mutex_trylock(&mutex);
+  int return_val = orig_mutex_trylock(mutex);
 
   run_algorithm();
 
