@@ -21,7 +21,7 @@ import subprocess
 # +-----------+-------------------+-------------------+
 
 SCHEDULING_POLICIES = ["none", "pct", "random"] # -s    (Different vals for the scheduling policy)
-MAX_RUN = 2                                     # -n    (Max number of times to run).
+MAX_RUN = 1                                     # -n    (Max number of times to run).
 STACKTRACE_VALS = ["true", "false"]             # -st   (enable/disable stack tracing)
 MAX_SEED = 1                                    # -seed (Max seed to use)
 
