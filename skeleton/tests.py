@@ -31,7 +31,6 @@ for seed in range(MAX_SEED):
     for run in range(MAX_RUN):
         for stacktrace in STACKTRACE_VALS:
             for scheduling_policy in SCHEDULING_POLICIES:
-                iterations += 1
                 run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
                 rc = subprocess.run(run_command)
                 return_codes.append(rc.returncode)
