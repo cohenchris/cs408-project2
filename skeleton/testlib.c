@@ -105,12 +105,15 @@ void stacktrace() {
 
 void run_algorithm() {
   return;
-  if (get_algorithm_ID() == 1) {
+  int algorithm = get_algorithm_ID();
+  if (algorithm == 1) {
+    // run random scheduling algorithm
     rsleep();
   }
-  else if (get_algorithm_ID() == 2) {
-    // run pct
+  else if (algorithm == 2) {
+    // run pct scheduling algorithm
   }
+  // else algorithm = none, do nothing
 }
 
 ////////////////////////////////////////////////////
