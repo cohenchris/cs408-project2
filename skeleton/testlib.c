@@ -108,6 +108,9 @@ void run_algorithm() {
   if (get_algorithm_ID() == 1) {
     rsleep();
   }
+  else if (get_algorithm_ID() == 2) {
+    // run pct
+  }
 }
 
 ////////////////////////////////////////////////////
@@ -204,7 +207,7 @@ void pthread_exit(void *retval) {
   run_algorithm();
 
   sem_wait(&g_print_lock);
-  INFO("THREAD EXITED (%d, %ld)", g_thread_count, gettid());
+  INFO("THREAD EXITED (%d, %ld)\n", g_thread_count, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
 

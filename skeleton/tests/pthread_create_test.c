@@ -10,11 +10,11 @@ struct multipliers {
     int y;
 };
 
-void* multiply(void * args) {
+void *multiply(void * args) {
   struct multipliers *arguments = (struct multipliers *)args;
   int result = (arguments->x) * (arguments->y);
   printf("%d * %d = %d\n", arguments->x, arguments->y, result);
-  return (void*)0;
+  pthread_exit(NULL);
 }
 
 int main() {
