@@ -4,38 +4,61 @@
 #include<unistd.h>
 #include<malloc.h>
 
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+#define THREAD_NUM 10
+
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
+
+int g_waiting_count = 0;
+
+struct my_thread {
+    int id;
+};
 
 void *t1(void * args) {
+  struct my_thread *arguments = (struct my_thread *)args;
+
   pthread_mutex_lock(&lock);
+  printf("Thread %d waiting for condition\n", arguments->id);
+  fflush(stdout);
 
-  printf("Waiting for condition\n");
+  g_waiting_count +=1;
+  if (g_waiting_count == THREAD_NUM) {
+    pthread_cond_signal(&wait_cond);
+  }
   pthread_cond_wait(&cond, &lock);
-
+  printf("Thread %d terminating\n", arguments->id);
   pthread_mutex_unlock(&lock);
   pthread_exit(NULL);
 }
 
 void *t2(void * args) {
   pthread_mutex_lock(&lock);
-
-  printf("Signaling condition\n");
-  pthread_cond_signal(&cond);
-
+  while (g_waiting_count < THREAD_NUM) {
+    pthread_cond_wait(&wait_cond, &lock);
+  }
+  printf("\nBROADCASTING CONDITION SIGNAL\n\n");
+  pthread_cond_broadcast(&cond);
   pthread_mutex_unlock(&lock);
   pthread_exit(NULL);
 }
 
 int main() {
-  pthread_t thread1;
-  pthread_t thread2;
+  pthread_t threads[THREAD_NUM];
+  struct my_thread args[THREAD_NUM];
 
-  pthread_create(&thread1, NULL, &t1, NULL);
-  sleep(1);
-  pthread_create(&thread2, NULL, &t2, NULL);
+  for (int i = 0; i < THREAD_NUM; i++) {
+    args[i].id = i + 1;
+    pthread_create(&threads[i], NULL, &t1, (void *)&args[i]);
+  }
 
-  pthread_join(thread1, NULL);
-  pthread_join(thread2, NULL);
+  pthread_t dispatcher;
+  pthread_create(&dispatcher, NULL, &t2, NULL);
+
+  for (int i = 0; i < THREAD_NUM; i++) {
+    pthread_join(threads[i], NULL);
+  }
+  pthread_join(dispatcher, NULL);
   return 0;
 }
