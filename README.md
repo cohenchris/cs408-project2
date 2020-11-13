@@ -22,5 +22,4 @@
 ## TODO:
 - 4.5 PCT Scheduling
 - Deadlocks
-- look into rsleep vs usleep?
-- modify tests.py / coverage.py (We need 100% coverage, run tests in all modes)
+- fix g_thread_count (save value for each thread in array/dict, index gettid())

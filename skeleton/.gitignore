@@ -6,8 +6,7 @@ testlib.gcno
 testlib.o
 testlib.so
 tests/.nfs000000000*
-unwind-test.gcno
-unwind-test.o
+unwind-test*
 utils.gcda
 utils.gcno
 utils.o
