@@ -14,6 +14,7 @@ void *multiply(void * args) {
   struct multipliers *arguments = (struct multipliers *)args;
   int result = (arguments->x) * (arguments->y);
   printf("%d * %d = %d\n", arguments->x, arguments->y, result);
+  fflush(stdout);
   pthread_exit(NULL);
 }
 

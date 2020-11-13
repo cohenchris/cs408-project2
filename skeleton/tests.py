@@ -21,9 +21,9 @@ import subprocess
 # +-----------+-------------------+-------------------+
 
 SCHEDULING_POLICIES = ["none", "pct", "random"] # -s    (Different vals for the scheduling policy)
-MAX_RUN = 2                                     # -n    (Max number of times to run)
+MAX_RUN = 2                                     # -n    (Max number of times to run).
 STACKTRACE_VALS = ["true", "false"]             # -st   (enable/disable stack tracing)
-MAX_SEED = 5                                    # -seed (Max seed to use)
+MAX_SEED = 1                                    # -seed (Max seed to use)
 
 return_codes = []                               # Will end up being an array of all return codes
 
@@ -31,6 +31,6 @@ for seed in range(MAX_SEED):
     for run in range(MAX_RUN):
         for stacktrace in STACKTRACE_VALS:
             for scheduling_policy in SCHEDULING_POLICIES:
-                run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
+                run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run + 1}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
                 rc = subprocess.run(run_command)
                 return_codes.append(rc.returncode)

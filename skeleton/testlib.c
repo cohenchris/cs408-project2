@@ -37,12 +37,32 @@ sem_t g_print_lock;
 int g_thread_count = 0;
 int STACKTRACE_THREAD_ID = -1;
 
+// Keeps track of thread counts - index is gettid()
+// We were told that there will only be up to 64 threads ever run
+long int g_thread_ids[64] = { 0 };
+
 // Used for interpose_start_routine in order to pass multiple args
 typedef struct arg_struct {
   void *(*struct_func) (void *);
   void *struct_arg;
 } arg_struct;
 
+
+////////////////////////////////////////////////////
+///////////////////// HELPERS //////////////////////
+////////////////////////////////////////////////////
+
+// Used to find the thread's thread number (assigned via g_thread_count)
+int find_thread_number(long int tid) {
+  int thread_ids_size = sizeof(g_thread_ids) / sizeof(g_thread_ids[0]);
+  for (int i = 0; i < thread_ids_size; i++) {
+    if (g_thread_ids[i] == tid) {
+      return i;
+    }
+  }
+  // if it gets here, it has failed (should never fail)
+  return -1;
+}
 
 ////////////////////////////////////////////////////
 //////////////////// STACKTRACE ////////////////////
@@ -113,7 +133,7 @@ void run_algorithm() {
   else if (algorithm == 2) {
     // run pct scheduling algorithm
   }
-  // else algorithm = none, do nothing
+  // else algorithm = none, do nothing special
 }
 
 ////////////////////////////////////////////////////
@@ -128,6 +148,8 @@ void *interpose_start_routine(void *argument) {
 
   sem_wait(&g_count_lock);
   int count = ++g_thread_count;
+  // save the count for this thread id (for later use)
+  g_thread_ids[count] = gettid();
   sem_post(&g_count_lock);
 
   run_algorithm();
@@ -210,7 +232,8 @@ void pthread_exit(void *retval) {
   run_algorithm();
 
   sem_wait(&g_print_lock);
-  INFO("THREAD EXITED (%d, %ld)\n", g_thread_count, gettid());
+  int thread_number = find_thread_number(gettid());
+  INFO("THREAD EXITED (%d, %ld)\n", thread_number, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
 
@@ -434,9 +457,13 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 static __attribute__((constructor (200))) void init_testlib(void) {
   // You can initialize stuff here
   INFO("Testlib loaded!\n");
+  fflush(stdout);
   INFO("Stacktraces is %i\n", get_stacktraces());
+  fflush(stdout);
   INFO("Algorithm ID is %i\n", get_algorithm_ID());
+  fflush(stdout);
   INFO("Seed is %i\n",(int) get_seed());
+  fflush(stdout);
 
   sem_init(&g_print_lock, 0, 1);
   sem_init(&g_count_lock, 0, 1);

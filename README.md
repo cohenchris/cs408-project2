@@ -22,4 +22,3 @@
 ## TODO:
 - 4.5 PCT Scheduling
 - Deadlocks
-- fix g_thread_count (save value for each thread in array/dict, index gettid())
