@@ -4,6 +4,11 @@
 #include<unistd.h>
 #include<malloc.h>
 
+/*
+ * PTHREAD_COND_WAIT AND PTHREAD_COND_SIGNAL TEST
+ * This test has one thread wait on a condition variable and the other thread signals that condition variable, resuming the first thread's execution.
+ */
+
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -37,5 +42,7 @@ int main() {
 
   pthread_join(thread1, NULL);
   pthread_join(thread2, NULL);
+
+  // If the program executes to here, it succeeds.
   return 0;
 }

@@ -21,4 +21,5 @@
 
 ## TODO:
 - 4.5 PCT Scheduling
-- Deadlocks
+- Finish tests
+- coverage.pdf

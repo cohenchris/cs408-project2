@@ -4,6 +4,13 @@
 #include<unistd.h>
 #include<malloc.h>
 
+/*
+ * PTHREAD_MUTEX_LOCK AND PTHREAD_MUTEX_UNLOCK BUGGY TEST
+ * This test launches 2 threads that each do some arithmetic on a global variable.
+ * Possible race conditions exist because mutexes are not used, and there is no guarantee that the threads will execute in the order that they were created.
+ * Due to the high likelihood of data races, this program will almost never print the expected value of 3657.
+ */
+
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 int g_shared_var = 0;
@@ -13,6 +20,7 @@ void *t1(void * args) {
 
   g_shared_var += 2;
   g_shared_var *= 3;
+  sleep(0.5);
   g_shared_var += 5;
   g_shared_var *= 7;
   g_shared_var -= 2;
@@ -28,6 +36,7 @@ void *t2(void * args) {
   g_shared_var *= 5;
   g_shared_var += 2;
   g_shared_var *= 9;
+  sleep(0.5);
   g_shared_var -= 6;  
 
   //pthread_mutex_unlock(&lock);
@@ -39,7 +48,6 @@ int main() {
   pthread_t thread2;
 
   pthread_create(&thread1, NULL, &t1, NULL);
-  //sleep(0.5);
   pthread_create(&thread2, NULL, &t2, NULL);
 
   pthread_join(thread1, NULL);

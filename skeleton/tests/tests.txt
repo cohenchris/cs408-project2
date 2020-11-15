@@ -10,8 +10,13 @@ pthread_mutex_lock_unlock_buggy_test.c
 
 pthread_yield_test.c
 
-name_test.c
-name_buggy_test.c
+order_test.c
+order_buggy_test.c
+
+atomicity_test.c
+atomicity_buggy_test.c
+
+pthread_mutex_trylock_test.c
 
 TODO:
-2 more buggy tests
+1 more buggy test

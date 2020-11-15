@@ -6,6 +6,12 @@
 
 #define THREAD_NUM 10
 
+/*
+ * PTHREAD_COND_BROADCAST TEST
+ * This test has 10 threads wait on 1 condition variable, and have another thread broadcast a signal for that condition variable
+ * to make all of the threads start executing again.
+ */
+
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
@@ -60,5 +66,7 @@ int main() {
     pthread_join(threads[i], NULL);
   }
   pthread_join(dispatcher, NULL);
+
+  // If the program gets down to here, it succeeds. The program will hang if it fails.
   return 0;
 }

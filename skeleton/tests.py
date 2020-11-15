@@ -8,8 +8,11 @@ import argparse
 import os
 import subprocess
 
+import time
+start_time = time.time()
+
 # This is only a placeholder, you can do much better!
-#rc = subprocess.run(["python3", "coverage.py"])
+# rc = subprocess.run(["python3", "coverage.py"])
 
 # +-----------+-------------------+-------------------+
 # | flag      |   description     |       input       |
@@ -34,3 +37,7 @@ for seed in range(MAX_SEED):
                 run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run + 1}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
                 rc = subprocess.run(run_command)
                 return_codes.append(rc.returncode)
+
+elapsed_secs = time.time() - start_time
+elapsed_mins = elapsed_secs / 60.0
+print(f"\n\n TIME ELAPSED: {elapsed_secs} seconds, {elapsed_mins} mins")

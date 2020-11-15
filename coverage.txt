@@ -1,0 +1,9 @@
+Reasons for not 100% coverage:
+
+- void stacktrace()
+    Lines 141-142 not executed sometimes because they're there to catch errors that we can't predict (libunwind error).
+    If we exclude this, and libunwind throws an error, it would crash the program.
+    These are not guaranteed to execute always.
+
+- void pthread_exit()
+    The final curly brace is never covered because, on the line before, the original pthread_exit() function is called, which does not return.
