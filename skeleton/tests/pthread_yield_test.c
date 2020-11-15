@@ -2,17 +2,12 @@
 #include <pthread.h>
 #define _GNU_SOURCE
 
-/*
- * PTHREAD_YIELD TEST
- * This test creates 2 threads. The first thread yields the CPU, giving a chance for the second thread to execute.
- * It does not guarantee that the second thread finishes first, but it happens more often than not.
- */
-
-void *t1(void *arg)
-{
- pthread_yield();
- printf("Thread 1 executing\n");
- pthread_exit(NULL);
+void *t1(void * args) {
+  pthread_yield();
+  for (int i = 0; i < 100000; i++)
+    ;
+  printf("Thread 1 executing\n");
+  pthread_exit(NULL);
 }
 
 void *t2(void *arg)
