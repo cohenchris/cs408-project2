@@ -6,6 +6,8 @@
 
 void *t1(void * args) {
   pthread_yield();
+  for (int i = 0; i < 100000; i++)
+    ;
   printf("Thread 1 executing\n");
   pthread_exit(NULL);
 }
