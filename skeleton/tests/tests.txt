@@ -18,5 +18,4 @@ atomicity_buggy_test.c
 
 pthread_mutex_trylock_test.c
 
-TODO:
-1 more buggy test
+deadlock_buggy_test.c
