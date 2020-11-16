@@ -641,6 +641,7 @@ void *interpose_start_routine(void *argument) {
 
   sem_wait(&g_count_lock);
   g_thread_count++;
+  g_thread_ids[g_thread_count] = gettid();
   sem_post(&g_count_lock);
 
   sem_wait(&g_print_lock);
