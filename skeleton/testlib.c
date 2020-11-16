@@ -641,10 +641,11 @@ void *interpose_start_routine(void *argument) {
 
   sem_wait(&g_count_lock);
   g_thread_count++;
+  g_thread_ids[g_thread_count] = gettid();
   sem_post(&g_count_lock);
 
   sem_wait(&g_print_lock);
-  int thread_number = g_thread_count;
+  int thread_number = find_thread_number(gettid());
   INFO("THREAD CREATED (%d, %ld)\n", thread_number, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
