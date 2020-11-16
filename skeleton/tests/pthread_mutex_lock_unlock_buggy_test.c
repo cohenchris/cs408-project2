@@ -20,9 +20,9 @@ void *t1(void * args) {
 
   g_shared_var += 2;
   g_shared_var *= 3;
-  sleep(0.5);
   g_shared_var += 5;
   g_shared_var *= 7;
+  sleep(0.1);
   g_shared_var -= 2;
 
   //pthread_mutex_unlock(&lock);
@@ -35,8 +35,8 @@ void *t2(void * args) {
   g_shared_var += 6;
   g_shared_var *= 5;
   g_shared_var += 2;
+  sleep(0.1);
   g_shared_var *= 9;
-  sleep(0.5);
   g_shared_var -= 6;  
 
   //pthread_mutex_unlock(&lock);

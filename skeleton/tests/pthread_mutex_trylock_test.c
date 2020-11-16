@@ -7,6 +7,12 @@
 pthread_mutex_t lock1 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lock2 = PTHREAD_MUTEX_INITIALIZER;
 
+/*
+ * PTHREAD_MUTEX_TRYLOCK TEST
+ * This test uses trylock in order to prevent a deadlock. This should prevent deadlock.
+ * If it does deadlock, it will be caught by the framework and return 1.
+ */
+
 void *t1(void * args) {
   // lock mutex 1
   pthread_mutex_lock(&lock1);
@@ -51,5 +57,7 @@ int main() {
 
   pthread_join(thread1, NULL);
   pthread_join(thread2, NULL);
+
+  // If it reaches here, it succeeds. If it deadlocks, the framework will catch it and return 1.
   return 0;
 }

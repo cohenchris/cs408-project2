@@ -26,12 +26,12 @@ void *t1(void * args) {
         return_code = 1;
         printf("The string is NOT 'Chris'\n");
     }
-    //pthread_exit(NULL);
+    return NULL;
 }
 
 void *t2(void * args) {
     name = "";
-    //pthread_exit(NULL);
+    return NULL;
 }
 
 int main() {

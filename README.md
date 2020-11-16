@@ -21,5 +21,4 @@
 
 ## TODO:
 - 4.5 PCT Scheduling
-- Finish tests
 - coverage.pdf

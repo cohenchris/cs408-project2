@@ -37,7 +37,7 @@ int main() {
   pthread_t thread2;
 
   pthread_create(&thread1, NULL, &t1, NULL);
-  sleep(1);
+  sleep(0.1);
   pthread_create(&thread2, NULL, &t2, NULL);
 
   pthread_join(thread1, NULL);

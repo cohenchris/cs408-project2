@@ -29,8 +29,6 @@ void *t1(void * args) {
 }
 
 void *t2(void * args) {
-  for (int i = 0; i < 1000000; i++);
-
   pthread_mutex_lock(&lock);
 
   g_shared_var += 6;
@@ -48,6 +46,8 @@ int main() {
   pthread_t thread2;
 
   pthread_create(&thread1, NULL, &t1, NULL);
+  sleep(0.1);
+
   pthread_create(&thread2, NULL, &t2, NULL);
 
   pthread_join(thread1, NULL);
