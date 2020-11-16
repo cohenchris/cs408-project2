@@ -31,6 +31,16 @@ typedef int (*pthread_mutex_lock_type)();
 typedef int (*pthread_mutex_unlock_type)();
 typedef int (*pthread_mutex_trylock_type)();
 
+// Needed for PCT
+#define DEBUG true
+#define MAX_THREAD 64
+
+#define PCT_THREAD_CALL 0
+#define PCT_THREAD_START 1
+#define PCT_THREAD_TERMINATE 2
+#define PCT_THREAD_DO_NOTHING 3
+
+
 sem_t g_count_lock;
 sem_t g_print_lock;
 
@@ -40,22 +50,16 @@ int STACKTRACE_THREAD_ID = -1;
 
 // Keeps track of thread counts - index is gettid()
 // We were told that there will only be up to 64 threads ever run
-long int g_thread_ids[64] = { 0 };
+long int g_thread_ids[MAX_THREAD] = { 0 };
+
+// PCT Priority Array
+int priority[MAX_THREAD];
 
 // Used for interpose_start_routine in order to pass multiple args
 typedef struct arg_struct {
   void *(*struct_func) (void *);
   void *struct_arg;
 } arg_struct;
-
-// Needed for PCT
-#define DEBUG true
-#define MAX_THREAD 64
-
-#define PCT_THREAD_CALL 0
-#define PCT_THREAD_START 1
-#define PCT_THREAD_TERMINATE 2
-#define PCT_THREAD_DO_NOTHING 3
 
 struct thread_struct {
   pthread_t thread_id;
@@ -90,16 +94,30 @@ int find_thread_number(long int tid) {
   }
   return -1;
 }
+// Used to shuffle initial PCT priority array
+void shuffle(int *array, size_t n) {
+  if (n > 1) {
+    size_t i;
+    for (i = 0; i < n - 1; i++) {
+      size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
+      int t = array[j];
+      array[j] = array[i];
+      array[i] = t;
+    }
+  }
+}
 
 ////////////////////////////////////////////////////
 //////////////////// STACKTRACE ////////////////////
 ////////////////////////////////////////////////////
 
 // String array of functions to omit from stack trace
-char omit_functions[3][25] = {
+char omit_functions[5][25] = {
   "interpose_start_routine",
   "omit",
-  "stacktrace"
+  "stacktrace",
+  "find_thread_number",
+  "shuffle"
 };
 
 bool omit(char * func) {
@@ -240,11 +258,10 @@ void PCT(int pct_thread_state) {
 }
 
 ////////////////////////////////////////////////////
-//////////////////// ALGORITHMS ////////////////////
+/////////////// SCHEDULING ALGORITHMS //////////////
 ////////////////////////////////////////////////////
 
-void run_algorithm(int pct_thread_state) {
-  //return;
+void run_scheduling_algorithm(int pct_thread_state) {
   int algorithm = get_algorithm_ID();
   if (algorithm == kAlgorithmRandom) {
     // run random scheduling algorithm
@@ -272,7 +289,7 @@ void *interpose_start_routine(void *argument) {
   g_thread_ids[g_thread_count] = gettid();
   sem_post(&g_count_lock);
 
-  run_algorithm(PCT_THREAD_START);
+  run_scheduling_algorithm(PCT_THREAD_START);
 
   sem_wait(&g_print_lock);
   int thread_number = find_thread_number(gettid());
@@ -283,7 +300,7 @@ void *interpose_start_routine(void *argument) {
   // Execute the function for the thread as normal
   void *return_val = start_routine(arg);
 
-  run_algorithm(PCT_THREAD_TERMINATE);
+  run_scheduling_algorithm(PCT_THREAD_TERMINATE);
 
   sem_wait(&g_print_lock);
   INFO("THREAD EXITED (%d, %ld)\n", thread_number, gettid());
@@ -306,7 +323,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   args->struct_func = start_routine;
   args->struct_arg = arg;
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
@@ -317,7 +334,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 
   int return_val = orig_create(thread, attr, &interpose_start_routine, (void *)args);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_create(%p, %p, %p, %p) = %d\n", thread, attr, start_routine, arg, return_val);
@@ -330,7 +347,7 @@ void pthread_exit(void *retval) {
   pthread_exit_type orig_exit;
   orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_exit(%p)\n", retval);
@@ -339,7 +356,7 @@ void pthread_exit(void *retval) {
   stacktrace();
   sem_post(&g_print_lock);
 
-  run_algorithm(PCT_THREAD_TERMINATE);
+  run_scheduling_algorithm(PCT_THREAD_TERMINATE);
 
   sem_wait(&g_print_lock);
   int thread_number = find_thread_number(gettid());
@@ -354,7 +371,7 @@ int pthread_yield(void) {
   pthread_yield_type orig_yield;
   orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
 
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_yield()\n");
@@ -365,7 +382,7 @@ int pthread_yield(void) {
 
   int return_val = orig_yield();
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_yield() = %d\n", return_val);
@@ -380,7 +397,7 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
   pthread_cond_wait_type orig_cond_wait;
   orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
 
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_cond_wait(%p, %p)\n", cond, mutex);
@@ -391,7 +408,7 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
 
   int return_val = orig_cond_wait(cond, mutex);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_cond_wait(%p, %p) = %d\n", cond, mutex, return_val);
@@ -405,7 +422,7 @@ int pthread_cond_signal(pthread_cond_t *cond) {
   pthread_cond_signal_type orig_cond_signal;
   orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
 
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_signal(%p)\n", cond);
@@ -416,7 +433,7 @@ int pthread_cond_signal(pthread_cond_t *cond) {
 
   int return_val = orig_cond_signal(cond);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_cond_signal(%p) = %d\n", cond, return_val);
@@ -430,7 +447,7 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
   pthread_cond_broadcast_type orig_cond_broadcast;
   orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
   
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_cond_broadcast(%p)\n", cond);
@@ -441,7 +458,7 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
 
   int return_val = orig_cond_broadcast(cond);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_cond_broadcast(%p) = %d\n", cond, return_val);
@@ -461,7 +478,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
     return orig_mutex_lock(mutex);
   } 
   
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_lock(%p)\n", mutex);
@@ -472,7 +489,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
   
   int return_val = orig_mutex_lock(mutex);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_lock(%p) = %d\n", mutex, return_val);
@@ -491,7 +508,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
     return orig_mutex_unlock(mutex);
   }
   
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_unlock(%p)\n", mutex);
@@ -502,7 +519,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 
   int return_val = orig_mutex_unlock(mutex);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_unlock(%p) = %d\n", mutex, return_val);
@@ -516,7 +533,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
   pthread_mutex_trylock_type orig_mutex_trylock;
   orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
-  run_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_trylock(%p)\n", mutex);
@@ -527,7 +544,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 
   int return_val = orig_mutex_trylock(mutex);
 
-  run_algorithm(PCT_THREAD_DO_NOTHING);
+  run_scheduling_algorithm(PCT_THREAD_DO_NOTHING);
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_trylock(%p) = %d\n", mutex, return_val);
@@ -546,6 +563,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
   pthread_mutex_t init_lock;
   g_orig_mutex_lock(&init_lock);
 
+
   // You can initialize stuff here
   INFO("Testlib loaded!\n");
   fflush(stdout);
@@ -556,9 +574,19 @@ static __attribute__((constructor (200))) void init_testlib(void) {
   INFO("Seed is %i\n",(int) get_seed());
   fflush(stdout);
 
+
+  // Initialize semaphores for thread count and print lock
   sem_init(&g_print_lock, 0, 1);
   sem_init(&g_count_lock, 0, 1);
   
+
+  // Initialize and shuffle PCT thread priorities
+  for (int i = 0; i < MAX_THREAD; i++) {
+    priority[i] = i;
+  }
+  shuffle(priority[i])
+  
+
   // Needed for PCT
   g_runnable = (struct thread_struct*) malloc(MAX_THREAD * sizeof(struct thread_struct));
   g_semaphores = (sem_t *) malloc(MAX_THREAD * sizeof(sem_t));
@@ -573,4 +601,5 @@ static __attribute__((constructor (200))) void init_testlib(void) {
     }
   }
   g_orig_mutex_unlock(&init_lock);
+
 }
