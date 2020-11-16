@@ -52,8 +52,6 @@ int STACKTRACE_THREAD_ID = -1;
 // We were told that there will only be up to 64 threads ever run
 long int g_thread_ids[MAX_THREAD] = { 0 };
 
-// PCT Priority Array
-int priority[MAX_THREAD];
 
 // Used for interpose_start_routine in order to pass multiple args
 typedef struct arg_struct {
@@ -94,18 +92,6 @@ int find_thread_number(long int tid) {
   }
   return -1;
 }
-// Used to shuffle initial PCT priority array
-void shuffle(int *array, size_t n) {
-  if (n > 1) {
-    size_t i;
-    for (i = 0; i < n - 1; i++) {
-      size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
-      int t = array[j];
-      array[j] = array[i];
-      array[i] = t;
-    }
-  }
-}
 
 ////////////////////////////////////////////////////
 //////////////////// STACKTRACE ////////////////////
@@ -116,8 +102,7 @@ char omit_functions[5][25] = {
   "interpose_start_routine",
   "omit",
   "stacktrace",
-  "find_thread_number",
-  "shuffle"
+  "find_thread_number"
 };
 
 bool omit(char * func) {
@@ -577,15 +562,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
 
   // Initialize semaphores for thread count and print lock
   sem_init(&g_print_lock, 0, 1);
-  sem_init(&g_count_lock, 0, 1);
-  
-
-  // Initialize and shuffle PCT thread priorities
-  for (int i = 0; i < MAX_THREAD; i++) {
-    priority[i] = i;
-  }
-  shuffle(priority[i])
-  
+  sem_init(&g_count_lock, 0, 1);  
 
   // Needed for PCT
   g_runnable = (struct thread_struct*) malloc(MAX_THREAD * sizeof(struct thread_struct));
