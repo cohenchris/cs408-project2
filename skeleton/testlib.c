@@ -98,7 +98,7 @@ int find_thread_number(long int tid) {
 ////////////////////////////////////////////////////
 
 // String array of functions to omit from stack trace
-char omit_functions[5][25] = {
+char omit_functions[4][25] = {
   "interpose_start_routine",
   "omit",
   "stacktrace",
