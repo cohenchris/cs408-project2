@@ -36,8 +36,7 @@ for seed in range(MAX_SEED):
             for scheduling_policy in SCHEDULING_POLICIES:
                 run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run + 1}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
                 rc = subprocess.run(run_command)
-                return_codes.append(rc.returncode)
 
 elapsed_secs = time.time() - start_time
 elapsed_mins = elapsed_secs / 60.0
-print(f"\n\n TIME ELAPSED: {elapsed_secs} seconds, {elapsed_mins} mins")
+print(f"\n\n TIME ELAPSED: {elapsed_secs:.2f} seconds, {elapsed_mins:.2f} mins\n")

@@ -17,25 +17,36 @@ def str2bool(v):
   else:
     raise argparse.ArgumentTypeError('Boolean value expected.')
 
+if not os.path.exists("testlib.so"):
+  print("testlib.so not found! Make sure to compile it with \"make library\"!")
+  exit(1)
+
 parser = argparse.ArgumentParser(description="Concurrent program testing")
 parser.add_argument('-s', choices=["none", "pct", "random"], default="none", action="store", dest="algorithm")
 parser.add_argument('-n', type=int, default=1, action="store", dest="iterations")
 parser.add_argument('-st', type=str2bool, default=False, action="store", dest="stacktraces")
 parser.add_argument('-seed', type=int, default=0, action="store", dest="seed")
+parser.add_argument("target", nargs="+", action="store")
 args = parser.parse_args()
 
 m_env = os.environ.copy()
 m_env["STACKTRACES"] = str(args.stacktraces)
 m_env["ALGORITHM"] = args.algorithm
+m_env["LD_PRELOAD"] = "./testlib.so"
 
-directory = "tests/"
-for filename in os.listdir(directory):
-  if not filename.endswith("_test"):
+exit_status = 0
+
+for i in range(args.iterations):
+  m_env["SEED"] = str(args.seed + i)
+  try:
+    rc = subprocess.run(args.target, env=m_env, timeout=10)
+  except subprocess.TimeoutExpired:
+    # Possible deadlock
+    print("Race condition detected, possible deadlock")
+    if 1 > exit_status:
+      exit_status = 1
     continue
-  full_filename = directory + filename
-  command = "python3 new_framework.py -s={} -n={} -st={} -seed={} {}".format(args.algorithm, args.iterations, args.stacktraces, args.seed, full_filename)
-  print(command)
-  print(command.split(" "))
-  rc = subprocess.run(command.split(" "))
-  
-rc = subprocess.run(["gcov", "testlib.gcda"])
+  if rc.returncode > exit_status:
+    exit_status = rc.returncode
+
+exit(exit_status)
