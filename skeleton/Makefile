@@ -12,7 +12,7 @@ CC = gcc
 STD    = -std=gnu11
 WARN   = -Wall -Wextra -Wshadow -Wno-unused-parameter
 
-FLAGS  = $(STD) $(WARN) -O2 -g3 -fPIC -I libunwind/include/ -ldl
+FLAGS  = $(STD) $(WARN) -O0 -g3 -fPIC -I libunwind/include/ -ldl
 CFLAGS = $(FLAGS) -march=native
 
 # Targets
