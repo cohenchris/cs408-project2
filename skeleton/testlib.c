@@ -39,6 +39,8 @@ typedef int (*pthread_mutex_trylock_type)();
 
 sem_t g_count_lock;
 sem_t g_print_lock;
+// General lock used mostly in PCT
+sem_t g_general_lock;
 
 // Total number of threads that are active
 int g_thread_count = 0;
@@ -82,6 +84,7 @@ struct thread_struct {
   // Proccess ID for current thread
   pthread_t thread_id;
   int state;
+  int thread_number;
 };
 
 // g_current_thread is the index of the current thread
@@ -103,7 +106,7 @@ sem_t *g_semaphores = NULL;
 struct mutex_struct{
   pthread_mutex_t *mutex;
   int num_threads_waiting;
-  int threads_waiting[MAX_THREADS];
+  int *threads_waiting;
 };
 
 // Array of currently active mutexes (incomplete)
@@ -237,7 +240,7 @@ void run_highest_priority() {
   if (g_runnable_threads > 0) {
     if (DEBUG) {
       sem_wait(&g_print_lock);
-      INFO("POSTING THREAD: %d", g_current_thread);
+      INFO("POSTING THREAD: %d\n",g_current_thread);
       fflush(stdout);
       sem_post(&g_print_lock);
     }
@@ -287,6 +290,7 @@ void PCT_init_main() {
   // This is the thread_id for the main thread
   g_threads[thread_index].thread_id = gettid();
   g_threads[thread_index].state = THREAD_RUNNABLE;
+  g_threads[thread_index].thread_number = 0;
   g_current_thread = thread_index;
 
   if (DEBUG) {
@@ -302,8 +306,12 @@ void PCT_init_main() {
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
-    INFO("EXITING PCT_init_main() - g_runnable_threads = %d - g_current_thread = %d - priority = %d - proccess id = %ld \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread], g_threads[g_current_thread].thread_id);
+    INFO("EXITING PCT_init_main() - g_runnable_threads = %d - g_current_thread = %d - priority = %d - proccess id = %ld - thread_number = %d\n", 
+         g_runnable_threads,
+         g_current_thread,
+         get_priorities()[g_current_thread],
+         g_threads[g_current_thread].thread_id,
+         g_threads[g_current_thread].thread_number);
     fflush(stdout);
     sem_post(&g_print_lock);
   }
@@ -332,8 +340,12 @@ void PCT_thread_start() {
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_start() - g_runnable_threads = %d - new_thread = %d - priority = %d - proccess id = %ld \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread], g_threads[g_current_thread].thread_id);
+    INFO("EXITING PCT_thread_start() - g_runnable_threads = %d - new_thread = %d - priority = %d - proccess id = %ld - thread_number = %d\n", 
+         g_runnable_threads,
+         g_current_thread,
+         get_priorities()[g_current_thread],
+         g_threads[g_current_thread].thread_id,
+         g_threads[g_current_thread].thread_number);
     fflush(stdout);
     sem_post(&g_print_lock);
   }
@@ -390,14 +402,18 @@ void PCT_thread_before_create() {
   // Find the priority for this thread - from highest priority where thread is not active yet (ie DEAD)
   g_current_thread = find_next_available_thread();
   g_threads[g_current_thread].state = THREAD_RUNNABLE;
+  g_threads[g_current_thread].thread_number = g_thread_count;
   // the thread_id cannot be assigned until PCT_thread_start() when the thread has actually start
   // PCT_thread_start is called indirectly from interpose start routine through run_algorithm()
   g_runnable_threads++;
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_before_create() - g_runnable_threads = %d - g_current_thread = %d - priority = %d \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread]);
+    INFO("EXITING PCT_thread_before_create() - g_runnable_threads = %d - g_current_thread = %d - priority = %d - thread_number = %d\n", 
+         g_runnable_threads,
+         g_current_thread,
+         get_priorities()[g_current_thread],
+         g_threads[g_current_thread].thread_number);
     fflush(stdout);
     sem_post(&g_print_lock);
   }
@@ -422,6 +438,7 @@ void PCT_thread_terminate() {
   // pthread_exit - or termination of thread
   // set g_current thread to be the next runnable thread
   g_threads[g_current_thread].state = THREAD_DEAD;
+  g_threads[g_current_thread].thread_number = 0;
   g_runnable_threads--;
 
   run_highest_priority();
@@ -451,8 +468,29 @@ void PCT_thread_yield() {
     sem_post(&g_print_lock);
   }
 
-  // incomplete
-  run_highest_priority();
+  // Current thread is stopped - no threads should be running
+  // Find the highest priority thread that is not the current thread
+  int highest_priorty = -1;
+  int thread_index = -1;
+
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if ((g_threads[i].state == THREAD_RUNNABLE) &&
+        (get_priorities()[i] > highest_priorty) &&
+        (i != g_current_thread)) {
+      thread_index = i;
+      highest_priorty = get_priorities()[thread_index];
+    } 
+  }
+
+  // Check that no other thread is able to run
+  if (thread_index != -1) {
+    // start the second highest thread
+    int old_thread = g_current_thread;
+    g_current_thread = thread_index;
+    sem_post(&(g_semaphores[g_current_thread]));
+    // suspend the old thread
+    sem_wait(&(g_semaphores[old_thread]));
+  }
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -609,43 +647,54 @@ void run_scheduling_algorithm(int pct_thread_state) {
 // Thread Management
 void *interpose_start_routine(void *argument) {
   // Deconstruct the struct into [ function to execute, arg ]
-  sem_wait(&g_count_lock);
+  sem_wait(&g_general_lock);
   struct arg_struct *arguments = argument;
   void *(*start_routine) (void *) = arguments->struct_func;
   void *arg = arguments->struct_arg;
   // Tell which semaphore this thread should wait on
   int thread_index = arguments->thread_index;
-  sem_post(&g_count_lock);
+  sem_post(&g_general_lock);
   
   if (DEBUG) {
     sem_wait(&g_print_lock);
-    INFO("ENTER interpose_start_routine() - thread_index = %d - thread_id = %ld - waiting on semaphore\n", 
-         thread_index, g_threads[thread_index].thread_id);
+    INFO("ENTER interpose_start_routine() - thread_index = %d - thread_id = %ld - thread_number = %d - waiting on semaphore\n", 
+         thread_index, 
+         g_threads[thread_index].thread_id,
+         g_threads[thread_index].thread_number);
     fflush(stdout);
     sem_post(&g_print_lock);
   }
 
   // Needs to tell pthread_start what semaphores to wait on
-  sem_wait(&g_count_lock);
+  sem_wait(&g_general_lock);
   g_current_thread = thread_index;
-  sem_post(&g_count_lock);
+  sem_post(&g_general_lock);
 
   run_scheduling_algorithm(PCT_THREAD_START);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
-    INFO("interpose_start_routine() - start_routine = %p\n", start_routine);
+    INFO("interpose_start_routine() - start_routine = %p - thread_number = %d\n",
+         start_routine,
+         g_threads[g_current_thread].thread_number);
     fflush(stdout);
     sem_post(&g_print_lock);
   }
 
   sem_wait(&g_count_lock);
-  g_thread_count++;
+  if (get_algorithm_ID() != kAlgorithmPCT) {
+    g_thread_count++;
+  }
   g_thread_ids[g_thread_count] = gettid();
   sem_post(&g_count_lock);
 
   sem_wait(&g_print_lock);
-  int thread_number = find_thread_number(gettid());
+  int thread_number;
+  if (get_algorithm_ID() == kAlgorithmPCT) {
+    thread_number = g_threads[g_current_thread].thread_number;
+  } else {
+    thread_number = find_thread_number(gettid());
+  }
   INFO("THREAD CREATED (%d, %ld)\n", thread_number, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
@@ -654,7 +703,10 @@ void *interpose_start_routine(void *argument) {
   void *return_val = start_routine(arg);
 
   // Need to tell PCT_thread_terminate() which thread is terminating
+  sem_wait(&g_general_lock);
   g_current_thread = thread_index;
+  sem_post(&g_general_lock);
+
   run_scheduling_algorithm(PCT_THREAD_TERMINATE);
 
   sem_wait(&g_print_lock);
@@ -680,6 +732,12 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
     sem_post(&g_print_lock);
   }
 
+  if (get_algorithm_ID() == kAlgorithmPCT) {
+    sem_wait(&g_general_lock);
+    g_thread_count++;
+    sem_post(&g_general_lock);
+  }
+
   run_scheduling_algorithm(PCT_THREAD_BEFORE_CREATE);
 
   // Struct for multiple args
@@ -688,7 +746,9 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   args->struct_arg = arg;
   // g_current_thread is set in PCT_thread_before_create() to be this thread
   // that is about to be created
+  sem_wait(&g_general_lock);
   args->thread_index = g_current_thread;
+  sem_post(&g_general_lock);
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
@@ -738,10 +798,20 @@ void pthread_exit(void *retval) {
   stacktrace();
   sem_post(&g_print_lock);
 
+  int thread_number;
+  if (get_algorithm_ID() == kAlgorithmPCT) {
+    sem_wait(&g_general_lock);
+    thread_number = g_threads[g_current_thread].thread_number;
+    sem_post(&g_general_lock);
+  }
+
   run_scheduling_algorithm(PCT_THREAD_TERMINATE);
 
   sem_wait(&g_print_lock);
-  int thread_number = find_thread_number(gettid());
+
+  if (get_algorithm_ID() != kAlgorithmPCT) {
+    thread_number = find_thread_number(gettid());
+  }
   INFO("THREAD EXITED (%d, %ld)\n", thread_number, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
@@ -980,7 +1050,10 @@ static __attribute__((constructor (200))) void init_testlib(void) {
 
   // Initialize semaphores for thread count and print lock
   sem_init(&g_print_lock, 0, 1);
-  sem_init(&g_count_lock, 0, 1);  
+  sem_init(&g_count_lock, 0, 1);
+
+  // General lock used mostly in PCT
+  sem_init(&g_general_lock, 0, 1);
 
   // Needed for PCT
   g_threads = (struct thread_struct*) malloc(MAX_THREADS * sizeof(struct thread_struct));
@@ -989,12 +1062,23 @@ static __attribute__((constructor (200))) void init_testlib(void) {
 
   for (int i = 0; i < MAX_THREADS; i++) {
     g_threads[i].state = THREAD_DEAD;
+    g_threads[i].thread_number = -1;
     // Initialize array of semaphores for PCT
     sem_init(&g_semaphores[i], 0, 0);
+  }
 
+  for (int i = 0; i < MAX_MUTEXES; i++) {
     g_thread_mutexes[i].mutex = NULL;
     g_thread_mutexes[i].num_threads_waiting = 0;
+
+    // Assume each thread could have one of these mutexes - threads_waiting is a list of 
+    // thread indexes (into g_threads) that could be waiting on this mutex
+    g_thread_mutexes[i].threads_waiting = (int *) malloc(MAX_THREADS * sizeof(int)); 
+    for (int j = 0; j < MAX_THREADS; j++) {
+      g_thread_mutexes[i].threads_waiting[j] = -1;
+    }
   }
+
   // May want to put a conditional statement around this if you are not running the PCT algorithm
   PCT(PCT_INIT_MAIN);
 
