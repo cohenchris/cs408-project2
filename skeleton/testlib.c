@@ -26,6 +26,7 @@
 #define THREAD_BLOCKED 2
 #define THREAD_TERMINATED 3
 
+
 // Original Functions
 typedef void (*start_routine_type)();
 typedef int (*pthread_create_type)();
@@ -49,15 +50,18 @@ pthread_mutex_unlock_type orig_mutex_unlock;
 pthread_mutex_trylock_type orig_mutex_trylock;
 
 // Semaphores
-sem_t g_count_lock;
+sem_t g_global_vars_lock;
 sem_t g_print_lock;
 sem_t g_cond_lock;
 sem_t g_queue_lock;
+sem_t g_sched_lock;
 
 // Global Array Semaphores
 sem_t g_threads_lock;
 sem_t g_semaphores_lock;
 sem_t g_mutexes_lock;
+
+// Function locks
 
 struct thread_struct {
   long int tid;      // thread id from getttid()
@@ -108,40 +112,18 @@ struct thread_struct EMPTY_THREAD_STRUCT;
 //////////////////////////////////////////////////////////////////////
 /*
  * Used to find the thread's thread number (assigned via g_thread_count)
+ * MUST ALWAYS BE CALLED WITHIN sem_wait(&g_global_vars_lock); and sem_post(&g_global_vars_lock);
  */
 int get_thread_index(long int tid) {
+  //sem_wait(&g_global_vars_lock);
   for (int i = 0; i < MAX_THREADS; i++) {
     if (g_thread_ids[i] == tid) {
+      sem_post(&g_global_vars_lock);
       return i;
     }
   }
+  //sem_post(&g_global_vars_lock);
   return -1;
-}
-
-/*
- * Runs either Random, PCT or no algorithm at all.
- * Depends on the arguments passed to the framework.
- */
-void run_scheduling_algorithm() {
-  // printf("\nTHREADS\n");
-  // for (int i = 0; i < MAX_THREADS; i++) {
-  //   printf("thread num: %d, tid: %lu, priority: %d, state: %d\n", get_thread_index(g_threads[i].tid), g_threads[i].tid, get_priorities()[i], g_threads[i].state);
-  // }
-
-  int algorithm = get_algorithm_ID();
-  if (algorithm == kAlgorithmRandom) {
-    // run random scheduling algorithm
-    rsleep();
-  }
-  else if (algorithm == kAlgorithmPCT) {
-    // run pct scheduling algorithm
-    int highest_priority = get_highest_priority_index();
-    if (highest_priority != -1) {
-      sem_post(&g_semaphores[highest_priority]);            // start new highest thread
-      sem_wait(&g_semaphores[get_thread_index(gettid())]);   // stop current thread
-    }
-  }
-  // else algorithm = none, do nothing special
 }
 
 /*
@@ -159,11 +141,14 @@ bool compare_thread_structs(struct thread_struct *t1, struct thread_struct *t2) 
 //////////////////////////// STACKTRACE //////////////////////////////
 //////////////////////////////////////////////////////////////////////
 // String array of functions to omit from stack trace
-char omit_functions[4][25] = {
+char omit_functions[7][30] = {
   "interpose_start_routine",
   "omit",
   "stacktrace",
-  "get_thread_index"
+  "get_thread_index",
+  "compare_thread_structs",
+  "get_highest_priority_index",
+  "run_scheduling_algorithm"
 };
 
 /*
@@ -223,18 +208,93 @@ void stacktrace() {
 /*
  * Find thread with the highest priority out of all threads that are 
  * in a runnable state.
+ * MUST ALWAYS BE CALLED WITHIN sem_wait(&g_global_vars_lock); and sem_post(&g_global_vars_lock);
  */
 int get_highest_priority_index() {
-  int index = 0;
+  sem_wait(&g_print_lock);
+  INFO("\nPRIORITIES\n");
+  fflush(stdout);
   for (int i = 0; i < MAX_THREADS; i++) {
-    if (g_threads[i].state == THREAD_RUNNABLE && get_priorities()[i] > get_priorities()[index]) {
+    INFO("thread num: %d, tid: %lu, priority: %d, state: %d\n", get_thread_index(g_threads[i].tid), g_threads[i].tid, get_priorities()[i], g_threads[i].state);
+    fflush(stdout);
+  }
+  sem_post(&g_print_lock);
+
+  // Find the first runnable thread to compare against the rest
+  // If no runnable threads, return -1 and let current thread finish executing
+  int index = -1;
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if (g_threads[i].state == THREAD_RUNNABLE) {
       index = i;
     }
   }
-  if (get_thread_index(gettid()) == index) {
-    return -1;
+
+  if (index != -1) {
+    for (int i = 0; i < MAX_THREADS; i++) {
+      if (g_threads[i].state == THREAD_RUNNABLE && get_priorities()[i] > get_priorities()[index]) {
+        index = i;
+      }
+    }
   }
   return index;
+}
+
+/*
+ * Runs either Random, PCT or no algorithm at all.
+ * Depends on the arguments passed to the framework.
+ */
+void run_scheduling_algorithm() {
+  int algorithm = get_algorithm_ID();
+  if (algorithm == kAlgorithmRandom) {
+    // run random scheduling algorithm
+    rsleep();
+  }
+  else if (algorithm == kAlgorithmPCT) {
+    sem_wait(&g_global_vars_lock);
+    // run pct scheduling algorithm
+    int highest_priority = get_highest_priority_index();
+    int curr_thread = get_thread_index(gettid());
+
+    sem_wait(&g_print_lock);
+    INFO("HIGHEST PRIORITY THREAD %d STATE: %d\n", highest_priority, g_threads[highest_priority].state);
+    fflush(stdout);
+    sem_post(&g_print_lock);
+ 
+    // If highest priority thread is the current thread or there are no runnable threads
+    // Continue running current thread
+    if (highest_priority == curr_thread || highest_priority == -1) {
+      sem_wait(&g_print_lock);
+      INFO("CONTINUING THREAD %d\n", curr_thread);
+      fflush(stdout);
+      sem_post(&g_print_lock);
+    }
+    else {
+      sem_wait(&g_print_lock);
+      INFO("\nSTART THREAD %d\n", highest_priority);
+      fflush(stdout);   
+      sem_post(&g_print_lock);
+
+      // start new highest thread
+      sem_post(&g_semaphores[highest_priority]);
+
+      // stop current thread unless it is in terminated state
+      if (g_threads[curr_thread].state != THREAD_TERMINATED) {
+        sem_wait(&g_print_lock);
+        INFO("\nBLOCK THREAD %d\n", curr_thread);
+        fflush(stdout);
+        sem_post(&g_print_lock);
+        
+        sem_wait(&g_semaphores[curr_thread]);
+      } else {
+        sem_wait(&g_print_lock);
+        INFO("CONTINUING THREAD %d\n", curr_thread);
+        fflush(stdout);
+        sem_post(&g_print_lock);
+      }
+    }
+    sem_post(&g_global_vars_lock);
+  }
+  // else algorithm = none, do nothing special
 }
 
 
@@ -246,47 +306,54 @@ int get_highest_priority_index() {
  * Allows for logging and other scheduling to be done before the thread starts.
  */
 void *interpose_start_routine(void *argument) {
-  // Deconstruct the struct into [ function to execute, arg ]
-  sem_wait(&g_count_lock);
-  struct arg_struct *arguments = argument;
-  void *(*start_routine) (void *) = arguments->struct_func;
-  void *arg = arguments->struct_arg;
-  // Tell which semaphore this thread should wait on
-  sem_post(&g_count_lock);
-
-  run_scheduling_algorithm();
-
-  sem_wait(&g_count_lock);
+  sem_wait(&g_global_vars_lock);
   g_thread_count++;
   // Storing thread id at index g_thread_count
   g_thread_ids[g_thread_count] = gettid();
 
+  // sem_wait(&g_threads_lock);
   // Initialize struct for current thread
   g_threads[g_thread_count].tid = gettid();
   g_threads[g_thread_count].state = THREAD_RUNNABLE;
+  // sem_post(&g_threads_lock);
+  int thread_index = get_thread_index(gettid());
+  sem_post(&g_global_vars_lock);
 
-  sem_post(&g_count_lock);
+  // Block immediately
+  sem_wait(&g_semaphores[thread_index]);
 
   sem_wait(&g_print_lock);
-  int thread_number = get_thread_index(gettid());
-  INFO("THREAD CREATED (%d, %ld)\n", thread_number, gettid());
+  sem_wait(&g_global_vars_lock);
+  INFO("THREAD CREATED (%d, %ld)\n", thread_index, g_threads[thread_index].tid);
   fflush(stdout);
+  sem_post(&g_global_vars_lock);
   sem_post(&g_print_lock);
+
+  run_scheduling_algorithm();
+
+  // Deconstruct the struct into [ function to execute, arg ]
+  sem_wait(&g_global_vars_lock);
+  struct arg_struct *arguments = argument;
+  void *(*start_routine) (void *) = arguments->struct_func;
+  void *arg = arguments->struct_arg;
+  // Tell which semaphore this thread should wait on
+  sem_post(&g_global_vars_lock);
   
   // Execute the function for the thread as normal
   void *return_val = start_routine(arg);
 
-  run_scheduling_algorithm();
+  sem_wait(&g_global_vars_lock);
+  g_threads[thread_index].state = THREAD_TERMINATED;
+  sem_post(&g_global_vars_lock);
 
   sem_wait(&g_print_lock);
-  INFO("THREAD EXITED (%d, %ld)\n", thread_number, gettid());
+  INFO("THREAD EXITED IN INTERPOSE (%d, %ld)\n", thread_index, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  sem_wait(&g_threads_lock);
-  g_threads[get_thread_index(gettid())].state = THREAD_TERMINATED;
-  sem_post(&g_threads_lock);
-
+  run_scheduling_algorithm();
+  INFO("THREAD %d GOT TO THE END OF INTERPOSE\n", thread_index);
+  fflush(stdout);
   return return_val;
 }
 
@@ -295,7 +362,6 @@ void *interpose_start_routine(void *argument) {
  */
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                    void *(*start_routine) (void *), void *arg) {
-  printf("CURRENT THREAD: %d\n", get_thread_index(gettid()));
   run_scheduling_algorithm();
 
   // Struct for multiple args
@@ -319,6 +385,10 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   fflush(stdout);
   sem_post(&g_print_lock);
 
+  sem_wait(&g_global_vars_lock);
+  INFO("THREAD %d GOT TO THE END OF CREATE\n", get_thread_index(gettid()));
+  fflush(stdout);
+  sem_post(&g_global_vars_lock);
   return return_val;
 }
 
@@ -326,10 +396,15 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
  * Terminates the calling thread.
  */
 void pthread_exit(void *retval) {
+  sem_wait(&g_global_vars_lock);
+  int thread_index = get_thread_index(gettid());
+  g_threads[thread_index].state = THREAD_TERMINATED;
+  sem_post(&g_global_vars_lock);
+
   run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);  
-  INFO("CALL pthread_exit(%p)\n", retval);
+  INFO("CALL pthread_exit(%p) from THREAD %d\n", retval, thread_index);
   fflush(stdout);
   STACKTRACE_THREAD_ID = gettid();
   stacktrace();
@@ -338,14 +413,9 @@ void pthread_exit(void *retval) {
   run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
-  int thread_number = get_thread_index(gettid());
-  INFO("THREAD EXITED (%d, %ld)\n", thread_number, gettid());
+  INFO("THREAD EXITED IN PTHREAD EXIT (%d, %ld)\n", thread_index, gettid());
   fflush(stdout);
   sem_post(&g_print_lock);
-
-  sem_wait(&g_threads_lock);
-  g_threads[get_thread_index(gettid())].state = THREAD_TERMINATED;
-  sem_post(&g_threads_lock);
 
   orig_exit(retval);
   return;
@@ -394,7 +464,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
     return orig_mutex_lock(mutex);
-  } 
+  }
   
   run_scheduling_algorithm();
 
@@ -521,7 +591,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
   //////////////////////////////////////////////////
   ////////////////// SEMAPHORES ////////////////////
   sem_init(&g_print_lock, 0, 1);
-  sem_init(&g_count_lock, 0, 1);
+  sem_init(&g_global_vars_lock, 0, 1);
   sem_init(&g_cond_lock, 0, 1);
   sem_init(&g_queue_lock, 0, 1);
 
@@ -544,11 +614,6 @@ static __attribute__((constructor (200))) void init_testlib(void) {
       cond_vars_queue[i][j] = EMPTY_THREAD_STRUCT;
     }
   }
-
-  // printf("\nPRIORITIES\n");
-  // for (int i = 0; i < MAX_THREADS; i++) {
-  //   printf("thread num: %d, priority: %d\n", i, get_priorities()[i]);
-  // }
 
   //////////////////////////////////////////////////
   ///////////////////// BEGIN //////////////////////
