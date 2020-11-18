@@ -172,8 +172,6 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
   }
   else {
     // no special PCT case - just run original function
-    pthread_cond_wait_type orig_cond_wait;
-    orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
     return_val = orig_cond_wait(cond, mutex);
   }
 
@@ -218,8 +216,6 @@ int pthread_cond_signal(pthread_cond_t *cond) {
   }
   else {
     // no special PCT case - just run original function
-    pthread_cond_signal_type orig_cond_signal;
-    orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
     return_val = orig_cond_signal(cond);
   }
 
@@ -266,8 +262,6 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
   }
   else {
     // no special PCT case - just run original function
-    pthread_cond_broadcast_type orig_cond_broadcast;
-    orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
     return_val = orig_cond_broadcast(cond);
   }
 

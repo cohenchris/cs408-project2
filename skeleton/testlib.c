@@ -1,25 +1,29 @@
 #define _GNU_SOURCE
-#include <assert.h> // Use this, it is your friend!
+#include <assert.h>
 #include <libunwind.h>
 #include <stdlib.h>
-
 #include <unistd.h>
 #include <sys/syscall.h>
 #define gettid() syscall(SYS_gettid)
-
 #include <semaphore.h>
 #include <string.h>
-
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #include <stdio.h>
-
+#include <dlfcn.h>
 #include <stdbool.h>
 
 #include "testlib.h"
 #include "utils.h"
 
-#include <dlfcn.h>
+#define DEBUG true
+#define MAX_THREADS 64
+#define MAX_MUTEXES 64
+
+
+
+
+// Original Functions
 typedef void (*start_routine_type)();
 typedef int (*pthread_create_type)();
 typedef void (*pthread_exit_type)();
@@ -31,24 +35,34 @@ typedef int (*pthread_mutex_lock_type)();
 typedef int (*pthread_mutex_unlock_type)();
 typedef int (*pthread_mutex_trylock_type)();
 
-// Needed for PCT
-#define DEBUG true
-#define MAX_THREADS 64
-// This may be overkill but any thread can have any number of locks - incomplete
-#define MAX_MUTEXES 100
+pthread_create_type orig_create;
+pthread_exit_type orig_exit;
+pthread_yield_type orig_yield;
+pthread_cond_wait_type orig_cond_wait;
+pthread_cond_signal_type orig_cond_signal;
+pthread_cond_broadcast_type orig_cond_broadcast;
+pthread_mutex_lock_type orig_mutex_lock;
+pthread_mutex_unlock_type orig_mutex_unlock;
+pthread_mutex_trylock_type orig_mutex_trylock;
 
+
+// Semaphores
 sem_t g_count_lock;
 sem_t g_print_lock;
 sem_t g_cond_lock;
 sem_t g_queue_lock;
-sem_t PCT_lock;
 
+struct thread_struct {
+  pthread_t thread_id;  // Proccess ID for current thread
+  int state;            // thread state (running, blocked, etc)
+  int index;            // index in g_threads
+};
 
 // Total number of threads that are active
 int g_thread_count = 0;
 int STACKTRACE_THREAD_ID = -1;
 
-// Keeps track of thread counts - index is gettid()
+// Keeps track of thread counts
 // We were told that there will only be up to 64 threads ever run
 long int g_thread_ids[MAX_THREADS] = { 0 };
 
@@ -57,67 +71,11 @@ long int g_thread_ids[MAX_THREADS] = { 0 };
 typedef struct arg_struct {
   void *(*struct_func) (void *);
   void *struct_arg;
-  // Needed for PCT
-  int thread_index;
 } arg_struct;
 
-// PCT thread state
 
-#define PCT_INIT_MAIN 0
-#define PCT_THREAD_CALL 1
-#define PCT_THREAD_BEFORE_CREATE 2
-#define PCT_THREAD_AFTER_CREATE 3
-#define PCT_THREAD_START 4
-#define PCT_THREAD_TERMINATE 5
-#define PCT_THREAD_YIELD 6
-#define PCT_THREAD_LOCK 7
-#define PCT_THREAD_UNLOCK 8
-#define PCT_DO_NOTHING 9
 
-// A thread can have any of the following states
-// - does not currently exist (never created or terminated)
-// - running
-// - block
-#define THREAD_DEAD 0
-#define THREAD_RUNNABLE 1
-#define THREAD_BLOCKED 2
-
-struct thread_struct {
-  pthread_t thread_id;  // Proccess ID for current thread
-  int state;
-  int index;            // index in g_threads
-};
-
-// g_current_thread is the index of the current thread
-// Used this in PCT_thread_start() to know that
-// PCT_thread_create() was done
-int g_current_thread = -1;
-
-int g_runnable_threads = 0;
-int g_block_threads = 0;
-
-// Make array of threads with boolean indicating if they are runnable or not
-// (Simpler data structures and a linked list)
-struct thread_struct *g_threads = NULL;
-
-// Array of semaphores for each thread mapped to the g_runnable array
-sem_t *g_semaphores = NULL;
-
-// Structure for mutexes this in incomplete 
-struct mutex_struct{
-  pthread_mutex_t *mutex;
-  int num_threads_waiting;
-  int threads_waiting[MAX_THREADS];
-};
-
-// Array of currently active mutexes (incomplete)
-struct mutex_struct *g_thread_mutexes = NULL;
-
-// Mutex lock used in the PCT algorithm
-pthread_mutex_lock_type g_orig_mutex_lock;
-pthread_mutex_unlock_type g_orig_mutex_unlock;
-
-////////// PTHREAD_CONDITION VARIABLES //////////
+// ------------ PTHREAD_CONDITION VARIABLES ------------
 
 // A list of all condition variables active, based on g_thread_count
 pthread_cond_t *cond_vars[MAX_THREADS] = { 0 };
@@ -126,9 +84,12 @@ int queue_rear = 0;
 
 // A queue for each condition variable active. The first index corresponds to the cond_vars array (cond_vars[5]'s queue will be at cond_vars_queue[5]).
 struct thread_struct **cond_vars_queue;
-
 // empty thread struct for comparison
 struct thread_struct EMPTY_THREAD_STRUCT;
+
+
+
+
 
 
 //////////////////////////////////////////////////////////////////////
@@ -148,9 +109,10 @@ int find_thread_number(long int tid) {
 }
 
 /*
- *
+ * Runs either Random, PCT or no algorithm at all.
+ * Depends on the arguments passed to the framework.
  */
-void run_scheduling_algorithm(int pct_thread_state) {
+void run_scheduling_algorithm() {
   int algorithm = get_algorithm_ID();
   if (algorithm == kAlgorithmRandom) {
     // run random scheduling algorithm
@@ -158,22 +120,21 @@ void run_scheduling_algorithm(int pct_thread_state) {
   }
   else if (algorithm == kAlgorithmPCT) {
     // run pct scheduling algorithm
-    PCT(pct_thread_state);
   }
   // else algorithm = none, do nothing special
 }
 
 /*
- *
+ * Compares thread_struct for PCT against a 'NULL' struct
  */
-  bool compare_thread_structs(struct thread_struct *t1, struct thread_struct *t2) {
-    if ((t1->thread_id == t2->thread_id) &&
-        (t1->state == t2->state) &&
-        (t1->index == t2->index)) {
-      return true;
-    }
-    return false;
- }
+bool compare_thread_structs(struct thread_struct *t1, struct thread_struct *t2) {
+  if ((t1->thread_id == t2->thread_id) &&
+      (t1->state == t2->state) &&
+      (t1->index == t2->index)) {
+    return true;
+  }
+  return false;
+}
 
 //////////////////////////////////////////////////////////////////////
 //////////////////////////// STACKTRACE //////////////////////////////
@@ -187,7 +148,7 @@ char omit_functions[4][25] = {
 };
 
 /*
- *
+ * Returns true if 'func' should be omitted from stacktrace.
  */
 bool omit(char * func) {
   int arr_size = sizeof(omit_functions) / sizeof(omit_functions)[0];
@@ -200,7 +161,7 @@ bool omit(char * func) {
 }
 
 /*
- *
+ * Prints the stacktrace. Code from the PDF handout for this project.
  */
 void stacktrace() {
   if (get_stacktraces()) {
@@ -240,417 +201,13 @@ void stacktrace() {
 //////////////////// PCT ///////////////////////////
 ////////////////////////////////////////////////////
 
-int find_highest_priority() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  // Find the highest priority thread available to be active
-  int highest_priority = -1;
-  int thread_index = -1;
-
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if ((g_threads[i].state == THREAD_RUNNABLE) && (get_priorities()[i] > highest_priority)) {
-      thread_index = i;
-      highest_priority = get_priorities()[thread_index];
-    } 
-  }
-
-  //sem_post(&PCT_lock);
-  return thread_index;
-}
-
-void run_highest_priority() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER run_highest_priority() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // Mark the g_current_thread as stopped
-  sem_init(&(g_semaphores[g_current_thread]), 0, 0);
-  // Unblock the highest priority thread
-  g_current_thread = find_highest_priority();
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXIT run_highest_priority() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  if (g_runnable_threads > 0) {
-    if (DEBUG) {
-      sem_wait(&g_print_lock);
-      INFO("POSTING thread: %d\n", g_current_thread);
-      fflush(stdout);
-      sem_post(&g_print_lock);
-    }
-    // Let PCT_thread_start() know that this thread can run
-    sem_post(&(g_semaphores[g_current_thread]));
-  }
-  //sem_post(&PCT_lock);
-  return;
-}
-
-int find_next_available_thread() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  // Find the highest priority thread available to be active
-  int highest_priority = -1;
-  int thread_index = -1;
-
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if ((g_threads[i].state == THREAD_DEAD) && (get_priorities()[i] > highest_priority)) {
-      thread_index = i;
-      highest_priority = get_priorities()[i];
-    } 
-  }
-
-  //sem_post(&PCT_lock);
-  return thread_index;
-}
-
-void PCT_init_main() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_init_main() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // Randomly choose priority for the main thread per a piazza post -
-  // Therefore choosing thread index 0
-  int thread_index = 0;
-  // This is the thread_id for the main thread
-  g_threads[thread_index].thread_id = gettid();
-  g_threads[thread_index].state = THREAD_RUNNABLE;
-  g_threads[thread_index].index = thread_index;
-  g_current_thread = thread_index;
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("POSTING thread: %d \n", g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  sem_post(&(g_semaphores[g_current_thread]));
-  printf("initializing main thread - %lu\n", g_current_thread);
-  // thread count = 0 per section 4.2 top of page 6
-  //g_runnable_threads++;
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_init_main() - g_runnable_threads = %d - g_current_thread = %d - priority = %d - proccess id = %ld \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread], g_threads[g_current_thread].thread_id);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_start() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_start() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // Store the thread_id for the current thread for later use maybe in mutexes
-  g_threads[g_current_thread].thread_id = gettid();
-  // Wait until you are posted
-  printf("PCT_THREAD_START WAITING\n");
-  fflush(stdout);
-  sem_wait(&(g_semaphores[g_current_thread]));
-  printf("PCT_THREAD_START DONE WAITING\n");
-  fflush(stdout);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_start() - g_runnable_threads = %d - new_thread = %d - priority = %d - proccess id = %ld \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread], g_threads[g_current_thread].thread_id);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_after_create() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_after_create() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    INFO("POSTING thread: %d\n", g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // Unblock highest priority thread
-  g_current_thread = find_highest_priority();
-  sem_post(&(g_semaphores[g_current_thread]));
-  
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_after_create() - g_runnable_threads = %d - new_thread = %d - priority = %d \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread]);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_before_create() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_before_create() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // Mark thread is runnable
-  // Find the priority for this thread - from highest priority where thread is not active yet (ie DEAD)
-  g_current_thread = find_next_available_thread();
-  g_threads[g_current_thread].state = THREAD_RUNNABLE;
-  // the thread_id cannot be assigned until PCT_thread_start() when the thread has actually start
-  // PCT_thread_start is called indirectly from interpose start routine through run_algorithm()
-  g_runnable_threads++;
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_before_create() - g_runnable_threads = %d - g_current_thread = %d - priority = %d \n", 
-         g_runnable_threads, g_current_thread, get_priorities()[g_current_thread]);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_terminate() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_terminate() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // pthread_exit - or termination of thread
-  // set g_current thread to be the next runnable thread
-  g_threads[g_current_thread].state = THREAD_DEAD;
-  g_runnable_threads--;
-
-  run_highest_priority();
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_terminate() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_yield() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_yield() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // incomplete
-  run_highest_priority();
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("g_current_thread = %d \n", g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_yield() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_lock() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_lock() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // This is just a shell it is not complete
-  // It does nothing right now
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_lock() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT_thread_unlock() {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER PCT_thread_unlock() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // This is just a shell it is not complete
-  // It does nothing right now
-  
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("EXITING PCT_thread_unlock() - g_runnable_threads = %d - g_current_thread = %d \n", 
-         g_runnable_threads, g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-void PCT(int pct_thread_state) {
-  //sem_t PCT_lock;
-  //sem_init(&PCT_lock, 0, 1);
-  //sem_wait(&PCT_lock);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  if (pct_thread_state == PCT_INIT_MAIN) {
-    // Create thread for main and give it a random priority
-    PCT_init_main();
-  } else if (pct_thread_state == PCT_THREAD_BEFORE_CREATE) {
-    // Call before orig_pthread_create 
-    PCT_thread_before_create();
-  } else if (pct_thread_state == PCT_THREAD_AFTER_CREATE) {
-    // Call after orig_pthread_create 
-    PCT_thread_after_create();
-  } else if (pct_thread_state == PCT_THREAD_START) {
-    // Call when interpose start routine begins
-    PCT_thread_start();
-  } else if (pct_thread_state == PCT_THREAD_TERMINATE) {
-    // Called when thread terminates or exit has been called
-    PCT_thread_terminate();
-  } else if (pct_thread_state == PCT_THREAD_YIELD) {
-    // Called when pthread_yield is called
-    PCT_thread_yield();
-  } else if (pct_thread_state == PCT_THREAD_LOCK) {
-    // Called when pthread_mutex_lock is called
-    PCT_thread_lock();
-  } else if (pct_thread_state == PCT_THREAD_UNLOCK) {
-    // Called when pthread_mutex_unlock is called
-    PCT_thread_unlock();
-  } else {
-    if (DEBUG) {
-      sem_wait(&g_print_lock);
-      INFO("PCT_DO_NOTHING\n");
-      fflush(stdout);
-      sem_post(&g_print_lock);
-    }
-  }
-  // else if pct_thread_state == PCT_THREAD_DO_NOTHING
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  //sem_post(&PCT_lock);
-  return;
-}
-
-
 
 //////////////////////////////////////////////////////////////////////
 /////////////////////// THREADING FUNCTIONS //////////////////////////
 //////////////////////////////////////////////////////////////////////
 /*
- *
+ * Wrapper for starting the actual function meant to execute in the thread.
+ * Allows for logging and other scheduling to be done before the thread starts.
  */
 void *interpose_start_routine(void *argument) {
   // Deconstruct the struct into [ function to execute, arg ]
@@ -659,30 +216,9 @@ void *interpose_start_routine(void *argument) {
   void *(*start_routine) (void *) = arguments->struct_func;
   void *arg = arguments->struct_arg;
   // Tell which semaphore this thread should wait on
-  int thread_index = arguments->thread_index;
-  sem_post(&g_count_lock);
-  
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("ENTER interpose_start_routine() - thread_index = %d - thread_id = %ld - waiting on semaphore\n", 
-         thread_index, g_threads[thread_index].thread_id);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  // Needs to tell pthread_start what semaphores to wait on
-  sem_wait(&g_count_lock);
-  g_current_thread = thread_index;
   sem_post(&g_count_lock);
 
-  run_scheduling_algorithm(PCT_THREAD_START);
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("interpose_start_routine() - start_routine = %p\n", start_routine);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
+  run_scheduling_algorithm();
 
   sem_wait(&g_count_lock);
   g_thread_count++;
@@ -698,9 +234,7 @@ void *interpose_start_routine(void *argument) {
   // Execute the function for the thread as normal
   void *return_val = start_routine(arg);
 
-  // Need to tell PCT_thread_terminate() which thread is terminating
-  g_current_thread = thread_index;
-  run_scheduling_algorithm(PCT_THREAD_TERMINATE);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("THREAD EXITED (%d, %ld)\n", thread_number, gettid());
@@ -710,29 +244,16 @@ void *interpose_start_routine(void *argument) {
 }
 
 /*
- *
+ * Creates a thread and starts execution.
  */
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                    void *(*start_routine) (void *), void *arg) {
-  pthread_create_type orig_create;
-  orig_create = (pthread_create_type)dlsym(RTLD_NEXT, "pthread_create");
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  run_scheduling_algorithm(PCT_THREAD_BEFORE_CREATE);
+  run_scheduling_algorithm();
 
   // Struct for multiple args
   struct arg_struct *args = malloc(sizeof(arg_struct));
   args->struct_func = start_routine;
   args->struct_arg = arg;
-  // g_current_thread is set in PCT_thread_before_create() to be this thread
-  // that is about to be created
-  args->thread_index = g_current_thread;
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_create(%p, %p, %p, %p)\n", thread, attr, start_routine, arg);
@@ -743,40 +264,21 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
 
   int return_val = orig_create(thread, attr, &interpose_start_routine, (void *)args);
 
-  run_scheduling_algorithm(PCT_THREAD_AFTER_CREATE);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_create(%p, %p, %p, %p) = %d\n", thread, attr, start_routine, arg, return_val);
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
   return return_val;
 }
 
 /*
- *
+ * Terminates the calling thread.
  */
 void pthread_exit(void *retval) {
-  pthread_exit_type orig_exit;
-  orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    INFO("ENTER pthread_exit - g_current_thread = %d\n", g_current_thread);
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  run_scheduling_algorithm(PCT_DO_NOTHING);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);  
   INFO("CALL pthread_exit(%p)\n", retval);
@@ -785,7 +287,7 @@ void pthread_exit(void *retval) {
   stacktrace();
   sem_post(&g_print_lock);
 
-  run_scheduling_algorithm(PCT_THREAD_TERMINATE);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   int thread_number = find_thread_number(gettid());
@@ -793,32 +295,15 @@ void pthread_exit(void *retval) {
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
   orig_exit(retval);
   return;
 }
 
 /*
- *
+ * Causes the calling thread to relinquish the CPU.
  */
 int pthread_yield(void) {
-  pthread_yield_type orig_yield;
-  orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
-
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
-
-  run_scheduling_algorithm(PCT_DO_NOTHING);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_yield()\n");
@@ -829,19 +314,13 @@ int pthread_yield(void) {
 
   int return_val = orig_yield();
 
-  run_scheduling_algorithm(PCT_THREAD_YIELD);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_yield() = %d\n", return_val);
   fflush(stdout);
   sem_post(&g_print_lock);
 
-  if (DEBUG) {
-    sem_wait(&g_print_lock);
-    INFO("======================================================\n");
-    fflush(stdout);
-    sem_post(&g_print_lock);
-  }
   return return_val;
 }
 
@@ -850,287 +329,6 @@ int pthread_yield(void) {
 //////////////////////////////////////////////////////////////////////
 /////////////////////// CONDITION FUNCTIONS //////////////////////////
 //////////////////////////////////////////////////////////////////////
-/*
- * Prints the current contents of the queue for each condition variable
- */
-void print_queue() {
-  sem_wait(&g_print_lock);
-  INFO("######################################\n");
-  fflush(stdout);
-  INFO("There are %d condition variables!\n", num_cond_vars);
-  fflush(stdout);
-
-  // Print queue for each condition var
-  for (int i = 0; i < num_cond_vars; i++) {
-    INFO("QUEUE FOR COND VAR %d: [ ", i);
-    fflush(stdout);
-    for (int j = 0; j < MAX_THREADS; j++) {
-      if (compare_thread_structs(&cond_vars_queue[i][j], &EMPTY_THREAD_STRUCT)) {
-        break;
-      }
-      else {
-        INFO("%lu, ", cond_vars_queue[i][j].thread_id);
-        fflush(stdout);
-      }
-    }
-    INFO("]\n");
-    fflush(stdout);
-  }
-
-  INFO("######################################\n");
-  fflush(stdout);
-  sem_post(&g_print_lock);
-}
-
-/*
- * Finds index of condition variable, if it exists.
- * Returns queue_rear if it doesn't exist - makes the program insert at back
- */
-int find_cond_index(pthread_cond_t *cond) {
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (cond_vars[i] == cond) {
-      return i;
-    }
-  }
-  // cond doesn't exist in the cond_vars array
-  // insert new cond at back of array
-  // return new index at back of array
-  cond_vars[queue_rear] = cond;
-  num_cond_vars++;
-  return queue_rear++;
-}
-
-/*
- * Searches cond_vars for the cond variable. If it doesn't exist, it inserts the new cond var at the end.
- * After that, it looks through cond_vars_queue to figure out where to queue the unique thread_id.
- * The unique g_current_thread is queued in the queue now.
- */
-void queue(pthread_cond_t *cond) {
-  // Finds place that the condition variable resides/should reside
-  int cond_var_index = find_cond_index(cond);
-
-  // Loops until it finds place that it should insert this next thread
-  int queue_index = -1;
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (compare_thread_structs(&cond_vars_queue[cond_var_index][i], &EMPTY_THREAD_STRUCT)) {
-      queue_index = i;
-      break;
-    }
-  }
-
-  cond_vars_queue[cond_var_index][queue_index] = g_threads[g_current_thread];
-
-  if (DEBUG) {
-    INFO("QUEUING!\n");
-    fflush(stdout);
-    print_queue();
-  }
-}
-
-/*
- * Dequeues highest priority runnable thread from condition variable cond.
- * Returns priority of thread dequeued, -1 if no runnable threads
- */
-struct thread_struct dequeue(pthread_cond_t *cond) {
-  // Finds place that the condition variable resides/should reside
-  int cond_var_index = find_cond_index(cond);
-
-  // find first runnable thread in the queue
-  int dequeue_index = -1;
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (cond_vars_queue[cond_var_index][i].state == THREAD_RUNNABLE) {
-      // if thread is runnable, dequeue it
-      dequeue_index = i;
-      break;
-    }
-  }
-
-  if (dequeue_index == -1) {
-    // return NULL if there is nothing to dequeue
-    return EMPTY_THREAD_STRUCT;
-  }
-
-  struct thread_struct dequeued_thread = cond_vars_queue[cond_var_index][dequeue_index];
-
-  // dequeue variable and shift everything
-  for (int i = dequeue_index + 1; i < MAX_THREADS; i++) {
-    if (!compare_thread_structs(&cond_vars_queue[cond_var_index][i], &EMPTY_THREAD_STRUCT)) {
-      // if it's not empty, then there's a value that needs to be shifted
-      cond_vars_queue[cond_var_index][i-1] = cond_vars_queue[cond_var_index][i];
-    } 
-    else {
-      // if it is NULL, make sure to overwrite the value before it to prevent duplicates
-      cond_vars_queue[cond_var_index][i-1] = EMPTY_THREAD_STRUCT;
-      break;
-    }
-  }
-
-  // Edge cases - if you dequeue, the last index will always be empty
-  cond_vars_queue[cond_var_index][MAX_THREADS - 1] = EMPTY_THREAD_STRUCT;
-
-  if (DEBUG) {
-    INFO("DEQUEUING!\n");
-    fflush(stdout);
-    print_queue();
-  }
-  return dequeued_thread;
-}
-
-////////////////////////////
-// PTHREAD_COND FUNCTIONS //
-////////////////////////////
-
-/*
- * Blocks until a condition variable is signaled. Must be called enclosed in 'mutex'
- * in order to ensure that the program doesn't hang.
- */
-int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
-  printf("WAITING\n");
-  fflush(stdout);
-  run_scheduling_algorithm(PCT_THREAD_CALL);
-
-  sem_wait(&g_print_lock);
-  INFO("CALL pthread_cond_wait(%p, %p)\n", cond, mutex);
-  fflush(stdout);
-  STACKTRACE_THREAD_ID = gettid();
-  stacktrace();
-  sem_post(&g_print_lock);
-
-  printf("PTHREAD_COND_WAIT DONE STACKTRACE\n");
-  fflush(stdout);
-  int return_val = -1;
-  if (get_algorithm_ID() == kAlgorithmPCT) {
-    // Run special version of pthread_cond_wait for PCT
-    // unlock mutex?
-    pthread_mutex_unlock(mutex);
-    printf("PTHREAD_COND_WAIT UNLOCKED MUTEX\n");
-    fflush(stdout);
-    // Queue current thread into the queue for 'cond'
-    queue(cond);
-    printf("PTHREAD_COND_WAIT QUEUED\n");
-    fflush(stdout);
-    printf("G_CURR_THD = %lu", g_current_thread);
-    sem_wait(&(g_semaphores[g_current_thread])); // will block until unlocked by PCT
-    // lock mutex?
-    printf("PTHREAD_COND_WAIT LOCKED MUTEX AGAIN\n");
-    fflush(stdout);
-    pthread_mutex_lock(mutex);
-
-    // by now, thread will be dequeued from conditional variable queue
-    return_val = 0;
-  }
-  else {
-    // no special PCT case - just run original function
-    pthread_cond_wait_type orig_cond_wait;
-    orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
-    return_val = orig_cond_wait(cond, mutex);
-  }
-
-  run_scheduling_algorithm(PCT_DO_NOTHING);
-
-  sem_wait(&g_print_lock);  
-  INFO("RETURN pthread_cond_wait(%p, %p) = %d\n", cond, mutex, return_val);
-  fflush(stdout);
-  sem_post(&g_print_lock);
-
-  return return_val;
-}
-
-/*
- * Suspends the current thread, starts the highest priority runnable thread.
- */
-int pthread_cond_signal(pthread_cond_t *cond) {
-  //sem_wait(&g_cond_lock);
-  run_scheduling_algorithm(PCT_THREAD_CALL);
-
-  sem_wait(&g_print_lock);
-  INFO("CALL pthread_cond_signal(%p)\n", cond);
-  fflush(stdout);
-  STACKTRACE_THREAD_ID = gettid();
-  stacktrace();
-  sem_post(&g_print_lock);
-
-  int return_val = -1;
-  if (get_algorithm_ID() == kAlgorithmPCT) {
-    // Run special version of pthread_cond_signal for PCT
-
-    // find highest priority runnable thread thread_id
-    struct thread_struct dequeued = dequeue(cond);
-    if (!compare_thread_structs(&dequeued, &EMPTY_THREAD_STRUCT)) {
-      // run thread
-      int thread_index = dequeued.index;
-      INFO("DEQUEUING INDEX %d\n", thread_index);
-      fflush(stdout);
-      sem_post(&(g_semaphores[thread_index]));
-      return_val = 0;
-    }
-  }
-  else {
-    // no special PCT case - just run original function
-    pthread_cond_signal_type orig_cond_signal;
-    orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
-    return_val = orig_cond_signal(cond);
-  }
-
-  run_scheduling_algorithm(PCT_DO_NOTHING);
-
-  sem_wait(&g_print_lock);
-  INFO("RETURN pthread_cond_signal(%p) = %d\n", cond, return_val);
-  fflush(stdout);
-  sem_post(&g_print_lock);
-
-  //sem_post(&g_cond_lock);
-  return return_val;
-}
-
-/*
- * Suspends the current thread, starts running ALL of the runnable threads.
- */
-int pthread_cond_broadcast(pthread_cond_t *cond) {
-  //sem_wait(&g_cond_lock);
-  run_scheduling_algorithm(PCT_THREAD_CALL);
-
-  sem_wait(&g_print_lock);
-  INFO("CALL pthread_cond_broadcast(%p)\n", cond);
-  fflush(stdout);
-  STACKTRACE_THREAD_ID = gettid();
-  stacktrace();
-  sem_post(&g_print_lock);
-
-  int return_val = -1;
-  if (get_algorithm_ID() == kAlgorithmPCT) {
-    // Run special version of pthread_cond_broadcast for PCT
-    while (true) {
-      struct thread_struct dequeued = dequeue(cond);
-      if (!compare_thread_structs(&dequeued, &EMPTY_THREAD_STRUCT)) {
-        // run thread
-        int thread_index = dequeued.index;
-        sem_post(&(g_semaphores[thread_index]));
-      }
-      else {
-        break;
-      }
-    }
-    return_val = 0;
-  }
-  else {
-    // no special PCT case - just run original function
-    pthread_cond_broadcast_type orig_cond_broadcast;
-    orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
-    return_val = orig_cond_broadcast(cond);
-  }
-
-  run_scheduling_algorithm(PCT_DO_NOTHING);
-
-  sem_wait(&g_print_lock);
-  INFO("RETURN pthread_cond_broadcast(%p) = %d\n", cond, return_val);
-  fflush(stdout);
-  sem_post(&g_print_lock);
-
-  //sem_post(&g_cond_lock);
-
-  return return_val;
-}
 
 
 
@@ -1138,18 +336,15 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
 ////////////////////////////// MUTEXES ///////////////////////////////
 //////////////////////////////////////////////////////////////////////
 /*
- *
+ * Locks a mutex. If the mutex is already locked, it blocks until the mutex becomes available.
  */
 int pthread_mutex_lock(pthread_mutex_t *mutex) {
-  pthread_mutex_lock_type orig_mutex_lock;
-  orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-  
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
     return orig_mutex_lock(mutex);
   } 
   
-  run_scheduling_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_lock(%p)\n", mutex);
@@ -1160,7 +355,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
   
   int return_val = orig_mutex_lock(mutex);
 
-  run_scheduling_algorithm(PCT_DO_NOTHING);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_lock(%p) = %d\n", mutex, return_val);
@@ -1171,18 +366,16 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) {
 }
 
 /*
- *
+ * Releases (unlocks) the object referenced by 'mutex'.
+ * Once unlocked, the scheduler determines which new thread should acquire the mutex, if any.
  */
 int pthread_mutex_unlock(pthread_mutex_t *mutex) {
-  pthread_mutex_unlock_type orig_mutex_unlock = NULL;
-  orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-
   if (STACKTRACE_THREAD_ID == gettid()) {
     // If this thread is currently printing the stacktrace, allow it to use the original function.
     return orig_mutex_unlock(mutex);
   }
   
-  run_scheduling_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_unlock(%p)\n", mutex);
@@ -1193,7 +386,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 
   int return_val = orig_mutex_unlock(mutex);
 
-  run_scheduling_algorithm(PCT_DO_NOTHING);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_unlock(%p) = %d\n", mutex, return_val);
@@ -1204,13 +397,10 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 }
 
 /*
- *
+ * Equivalent to pthread_mutex_lock(), except that if it’s already locked, the call returns immediately.
  */
 int pthread_mutex_trylock(pthread_mutex_t *mutex) {
-  pthread_mutex_trylock_type orig_mutex_trylock;
-  orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
-
-  run_scheduling_algorithm(PCT_THREAD_CALL);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("CALL pthread_mutex_trylock(%p)\n", mutex);
@@ -1221,7 +411,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 
   int return_val = orig_mutex_trylock(mutex);
 
-  run_scheduling_algorithm(PCT_DO_NOTHING);
+  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);
   INFO("RETURN pthread_mutex_trylock(%p) = %d\n", mutex, return_val);
@@ -1236,16 +426,27 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 //////////////////////////////////////////////////////////////////////
 //////////////////////////// CONSTRUCTOR /////////////////////////////
 //////////////////////////////////////////////////////////////////////
+/*
+ * Executes before any other function
+ */
 static __attribute__((constructor (200))) void init_testlib(void) {
-  // Used in PCT
-  g_orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-  g_orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-  
+  //////////////////////////////////////////////////
+  ////////////// ORIGINAL FUNCTIONS ////////////////
+  orig_mutex_lock = (pthread_mutex_lock_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+  orig_mutex_unlock = (pthread_mutex_unlock_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+  orig_create = (pthread_create_type)dlsym(RTLD_NEXT, "pthread_create");
+  orig_exit = (pthread_exit_type)dlsym(RTLD_NEXT, "pthread_exit");
+  orig_yield = (pthread_yield_type)dlsym(RTLD_NEXT, "pthread_yield");
+  orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+  orig_cond_wait = (pthread_cond_wait_type)dlsym(RTLD_NEXT, "pthread_cond_wait");
+  orig_cond_signal = (pthread_cond_signal_type)dlsym(RTLD_NEXT, "pthread_cond_signal");
+  orig_cond_broadcast = (pthread_cond_broadcast_type)dlsym(RTLD_NEXT, "pthread_cond_broadcast");
+
+  //////////////////////////////////////////////////
+  /////////////// INITIALIZATION ///////////////////
   pthread_mutex_t init_lock;
-  g_orig_mutex_lock(&init_lock);
+  orig_mutex_lock(&init_lock);
 
-
-  // You can initialize stuff here
   INFO("Testlib loaded!\n");
   fflush(stdout);
   INFO("Stacktraces is %i\n", get_stacktraces());
@@ -1256,29 +457,16 @@ static __attribute__((constructor (200))) void init_testlib(void) {
   fflush(stdout);
 
 
-  // Initialize semaphores for thread count and print lock
+  //////////////////////////////////////////////////
+  ////////////////// SEMAPHORES ////////////////////
   sem_init(&g_print_lock, 0, 1);
   sem_init(&g_count_lock, 0, 1);
   sem_init(&g_cond_lock, 0, 1);
   sem_init(&g_queue_lock, 0, 1);
-  sem_init(&PCT_lock, 0, 1);
 
 
-  // Needed for PCT
-  g_threads = (struct thread_struct*) malloc(MAX_THREADS * sizeof(struct thread_struct));
-  g_semaphores = (sem_t *) malloc(MAX_THREADS * sizeof(sem_t));
-  g_thread_mutexes = (struct mutex_struct *) malloc(MAX_MUTEXES * sizeof(struct mutex_struct));
-
-  for (int i = 0; i < MAX_THREADS; i++) {
-    g_threads[i].state = THREAD_DEAD;
-    // Initialize array of semaphores for PCT
-    sem_init(&g_semaphores[i], 0, 0);
-
-    g_thread_mutexes[i].mutex = NULL;
-    g_thread_mutexes[i].num_threads_waiting = 0;
-  }
-
-
+  //////////////////////////////////////////////////
+  ////////////// CONDITION VARIABLES ///////////////
   EMPTY_THREAD_STRUCT.thread_id = -1;
   EMPTY_THREAD_STRUCT.state = -1;
   EMPTY_THREAD_STRUCT.index = -1;
@@ -1294,8 +482,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
     }
   }
 
-  // May want to put a conditional statement around this if you are not running the PCT algorithm
-  PCT(PCT_INIT_MAIN);
-
-  g_orig_mutex_unlock(&init_lock);
+  //////////////////////////////////////////////////
+  ///////////////////// BEGIN //////////////////////
+  orig_mutex_unlock(&init_lock);
 }
