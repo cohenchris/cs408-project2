@@ -39,6 +39,10 @@ typedef int (*pthread_mutex_trylock_type)();
 
 sem_t g_count_lock;
 sem_t g_print_lock;
+sem_t g_cond_lock;
+sem_t g_queue_lock;
+sem_t PCT_lock;
+
 
 // Total number of threads that are active
 int g_thread_count = 0;
@@ -237,9 +241,9 @@ void stacktrace() {
 ////////////////////////////////////////////////////
 
 int find_highest_priority() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   // Find the highest priority thread available to be active
   int highest_priority = -1;
@@ -252,14 +256,14 @@ int find_highest_priority() {
     } 
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return thread_index;
 }
 
 void run_highest_priority() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -285,21 +289,21 @@ void run_highest_priority() {
   if (g_runnable_threads > 0) {
     if (DEBUG) {
       sem_wait(&g_print_lock);
-      INFO("POSTING THREAD: %d", g_current_thread);
+      INFO("POSTING thread: %d\n", g_current_thread);
       fflush(stdout);
       sem_post(&g_print_lock);
     }
     // Let PCT_thread_start() know that this thread can run
     sem_post(&(g_semaphores[g_current_thread]));
   }
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 int find_next_available_thread() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   // Find the highest priority thread available to be active
   int highest_priority = -1;
@@ -312,14 +316,14 @@ int find_next_available_thread() {
     } 
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return thread_index;
 }
 
 void PCT_init_main() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -346,8 +350,9 @@ void PCT_init_main() {
   }
 
   sem_post(&(g_semaphores[g_current_thread]));
+  printf("initializing main thread - %lu\n", g_current_thread);
   // thread count = 0 per section 4.2 top of page 6
-  g_runnable_threads++;
+  //g_runnable_threads++;
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -357,14 +362,14 @@ void PCT_init_main() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_start() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -377,7 +382,11 @@ void PCT_thread_start() {
   // Store the thread_id for the current thread for later use maybe in mutexes
   g_threads[g_current_thread].thread_id = gettid();
   // Wait until you are posted
+  printf("PCT_THREAD_START WAITING\n");
+  fflush(stdout);
   sem_wait(&(g_semaphores[g_current_thread]));
+  printf("PCT_THREAD_START DONE WAITING\n");
+  fflush(stdout);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -387,14 +396,14 @@ void PCT_thread_start() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_after_create() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -418,14 +427,14 @@ void PCT_thread_after_create() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_before_create() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -451,14 +460,14 @@ void PCT_thread_before_create() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_terminate() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -483,14 +492,14 @@ void PCT_thread_terminate() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_yield() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -518,14 +527,14 @@ void PCT_thread_yield() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_lock() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -546,14 +555,14 @@ void PCT_thread_lock() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT_thread_unlock() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -574,14 +583,14 @@ void PCT_thread_unlock() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
 void PCT(int pct_thread_state) {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  //sem_t PCT_lock;
+  //sem_init(&PCT_lock, 0, 1);
+  //sem_wait(&PCT_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -631,7 +640,7 @@ void PCT(int pct_thread_state) {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  //sem_post(&PCT_lock);
   return;
 }
 
@@ -846,24 +855,30 @@ int pthread_yield(void) {
  */
 void print_queue() {
   sem_wait(&g_print_lock);
-  printf("######################################\n");
-  printf("There are %d condition variables!\n", num_cond_vars);
+  INFO("######################################\n");
+  fflush(stdout);
+  INFO("There are %d condition variables!\n", num_cond_vars);
+  fflush(stdout);
 
   // Print queue for each condition var
   for (int i = 0; i < num_cond_vars; i++) {
-    printf("QUEUE FOR COND VAR %d: [ ", i);
+    INFO("QUEUE FOR COND VAR %d: [ ", i);
+    fflush(stdout);
     for (int j = 0; j < MAX_THREADS; j++) {
       if (compare_thread_structs(&cond_vars_queue[i][j], &EMPTY_THREAD_STRUCT)) {
-        printf("(null), ");
+        break;
       }
       else {
-        printf("%lu, ", cond_vars_queue[i][j].thread_id);
+        INFO("%lu, ", cond_vars_queue[i][j].thread_id);
+        fflush(stdout);
       }
     }
-    printf("]\n");
+    INFO("]\n");
+    fflush(stdout);
   }
 
-  printf("######################################\n");
+  INFO("######################################\n");
+  fflush(stdout);
   sem_post(&g_print_lock);
 }
 
@@ -906,7 +921,8 @@ void queue(pthread_cond_t *cond) {
   cond_vars_queue[cond_var_index][queue_index] = g_threads[g_current_thread];
 
   if (DEBUG) {
-    printf("QUEUING!\n");
+    INFO("QUEUING!\n");
+    fflush(stdout);
     print_queue();
   }
 }
@@ -953,7 +969,8 @@ struct thread_struct dequeue(pthread_cond_t *cond) {
   cond_vars_queue[cond_var_index][MAX_THREADS - 1] = EMPTY_THREAD_STRUCT;
 
   if (DEBUG) {
-    printf("DEQUEUING!\n");
+    INFO("DEQUEUING!\n");
+    fflush(stdout);
     print_queue();
   }
   return dequeued_thread;
@@ -968,6 +985,8 @@ struct thread_struct dequeue(pthread_cond_t *cond) {
  * in order to ensure that the program doesn't hang.
  */
 int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
+  printf("WAITING\n");
+  fflush(stdout);
   run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
@@ -977,14 +996,25 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
   stacktrace();
   sem_post(&g_print_lock);
 
+  printf("PTHREAD_COND_WAIT DONE STACKTRACE\n");
+  fflush(stdout);
   int return_val = -1;
   if (get_algorithm_ID() == kAlgorithmPCT) {
     // Run special version of pthread_cond_wait for PCT
     // unlock mutex?
+    pthread_mutex_unlock(mutex);
+    printf("PTHREAD_COND_WAIT UNLOCKED MUTEX\n");
+    fflush(stdout);
     // Queue current thread into the queue for 'cond'
     queue(cond);
+    printf("PTHREAD_COND_WAIT QUEUED\n");
+    fflush(stdout);
+    printf("G_CURR_THD = %lu", g_current_thread);
     sem_wait(&(g_semaphores[g_current_thread])); // will block until unlocked by PCT
     // lock mutex?
+    printf("PTHREAD_COND_WAIT LOCKED MUTEX AGAIN\n");
+    fflush(stdout);
+    pthread_mutex_lock(mutex);
 
     // by now, thread will be dequeued from conditional variable queue
     return_val = 0;
@@ -1010,6 +1040,7 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
  * Suspends the current thread, starts the highest priority runnable thread.
  */
 int pthread_cond_signal(pthread_cond_t *cond) {
+  //sem_wait(&g_cond_lock);
   run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
@@ -1028,6 +1059,8 @@ int pthread_cond_signal(pthread_cond_t *cond) {
     if (!compare_thread_structs(&dequeued, &EMPTY_THREAD_STRUCT)) {
       // run thread
       int thread_index = dequeued.index;
+      INFO("DEQUEUING INDEX %d\n", thread_index);
+      fflush(stdout);
       sem_post(&(g_semaphores[thread_index]));
       return_val = 0;
     }
@@ -1046,6 +1079,7 @@ int pthread_cond_signal(pthread_cond_t *cond) {
   fflush(stdout);
   sem_post(&g_print_lock);
 
+  //sem_post(&g_cond_lock);
   return return_val;
 }
 
@@ -1053,6 +1087,7 @@ int pthread_cond_signal(pthread_cond_t *cond) {
  * Suspends the current thread, starts running ALL of the runnable threads.
  */
 int pthread_cond_broadcast(pthread_cond_t *cond) {
+  //sem_wait(&g_cond_lock);
   run_scheduling_algorithm(PCT_THREAD_CALL);
 
   sem_wait(&g_print_lock);
@@ -1065,12 +1100,15 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
   int return_val = -1;
   if (get_algorithm_ID() == kAlgorithmPCT) {
     // Run special version of pthread_cond_broadcast for PCT
-    while (1) {
+    while (true) {
       struct thread_struct dequeued = dequeue(cond);
       if (!compare_thread_structs(&dequeued, &EMPTY_THREAD_STRUCT)) {
         // run thread
         int thread_index = dequeued.index;
         sem_post(&(g_semaphores[thread_index]));
+      }
+      else {
+        break;
       }
     }
     return_val = 0;
@@ -1088,6 +1126,8 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
   INFO("RETURN pthread_cond_broadcast(%p) = %d\n", cond, return_val);
   fflush(stdout);
   sem_post(&g_print_lock);
+
+  //sem_post(&g_cond_lock);
 
   return return_val;
 }
@@ -1218,7 +1258,11 @@ static __attribute__((constructor (200))) void init_testlib(void) {
 
   // Initialize semaphores for thread count and print lock
   sem_init(&g_print_lock, 0, 1);
-  sem_init(&g_count_lock, 0, 1);  
+  sem_init(&g_count_lock, 0, 1);
+  sem_init(&g_cond_lock, 0, 1);
+  sem_init(&g_queue_lock, 0, 1);
+  sem_init(&PCT_lock, 0, 1);
+
 
   // Needed for PCT
   g_threads = (struct thread_struct*) malloc(MAX_THREADS * sizeof(struct thread_struct));
@@ -1254,5 +1298,4 @@ static __attribute__((constructor (200))) void init_testlib(void) {
   PCT(PCT_INIT_MAIN);
 
   g_orig_mutex_unlock(&init_lock);
-
 }
