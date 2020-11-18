@@ -261,6 +261,7 @@ void run_scheduling_algorithm() {
     // run pct scheduling algorithm
     int highest_priority = get_highest_priority_index();
     int curr_thread = get_thread_index(gettid());
+    sem_post(&g_global_vars_lock);
 
     sem_wait(&g_print_lock);
     INFO("HIGHEST PRIORITY THREAD %d STATE: %d\n", highest_priority, g_threads[highest_priority].state);
@@ -274,11 +275,12 @@ void run_scheduling_algorithm() {
       INFO("CONTINUING THREAD %d\n", curr_thread);
       fflush(stdout);
       sem_post(&g_print_lock);
+      //sem_post(&g_global_vars_lock);
     }
     else {
       sem_wait(&g_print_lock);
       INFO("\nSTART THREAD %d\n", highest_priority);
-      fflush(stdout);   
+      fflush(stdout);
       sem_post(&g_print_lock);
 
       // start new highest thread
@@ -290,16 +292,17 @@ void run_scheduling_algorithm() {
         INFO("\nBLOCK THREAD %d\n", curr_thread);
         fflush(stdout);
         sem_post(&g_print_lock);
-        
+        //sem_post(&g_global_vars_lock);
+
         sem_wait(&g_semaphores[curr_thread]);
       } else {
         sem_wait(&g_print_lock);
         INFO("CONTINUING THREAD %d\n", curr_thread);
         fflush(stdout);
         sem_post(&g_print_lock);
+        //sem_post(&g_global_vars_lock);
       }
     }
-    sem_post(&g_global_vars_lock);
   }
   // else algorithm = none, do nothing special
 }
@@ -561,6 +564,7 @@ int dequeue(pthread_cond_t *cond) {
     }
   }
 
+  // index corresponding to this thread in every global array
   int thread_index = get_thread_index(cond_vars_queue[cond_var_index][dequeue_index].tid);
 
   if (dequeue_index == -1) {
@@ -568,8 +572,6 @@ int dequeue(pthread_cond_t *cond) {
     sem_post(&g_global_vars_lock);
     return -1;
   }
-
-  //struct thread_struct dequeued_thread = cond_vars_queue[cond_var_index][dequeue_index];
 
   // dequeue variable and shift everything
   for (int i = dequeue_index + 1; i < MAX_THREADS; i++) {
