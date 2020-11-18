@@ -30,13 +30,13 @@ MAX_SEED = 1                                    # -seed (Max seed to use)
 
 return_codes = []                               # Will end up being an array of all return codes
 
-for seed in range(MAX_SEED):
-    for run in range(MAX_RUN):
-        for stacktrace in STACKTRACE_VALS:
-            for scheduling_policy in SCHEDULING_POLICIES:
-                run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run + 1}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
-                rc = subprocess.run(run_command)
+# for seed in range(MAX_SEED):
+#     for run in range(MAX_RUN):
+#         for stacktrace in STACKTRACE_VALS:
+#             for scheduling_policy in SCHEDULING_POLICIES:
+#                 run_command = ["python3", "coverage.py", "-s", f"{scheduling_policy}", "-n", f"{run + 1}", "-st", f"{stacktrace}", "-seed" , f"{seed}"]
+#                 rc = subprocess.run(run_command)
 
-elapsed_secs = time.time() - start_time
-elapsed_mins = elapsed_secs / 60.0
-print(f"\n\n TIME ELAPSED: {elapsed_secs:.2f} seconds, {elapsed_mins:.2f} mins\n")
+# elapsed_secs = time.time() - start_time
+# elapsed_mins = elapsed_secs / 60.0
+# print(f"\n\n TIME ELAPSED: {elapsed_secs:.2f} seconds, {elapsed_mins:.2f} mins\n")

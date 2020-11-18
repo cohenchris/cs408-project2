@@ -9,8 +9,8 @@
  * This test has one thread wait on a condition variable and the other thread signals that condition variable, resuming the first thread's execution.
  */
 
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *t1(void * args) {
   pthread_mutex_lock(&lock);
@@ -35,8 +35,10 @@ void *t2(void * args) {
 int main() {
   pthread_t thread1;
   pthread_t thread2;
+  pthread_t thread3;
 
   pthread_create(&thread1, NULL, &t1, NULL);
+  pthread_create(&thread3, NULL, &t1, NULL);
   sleep(0.1);
   pthread_create(&thread2, NULL, &t2, NULL);
 

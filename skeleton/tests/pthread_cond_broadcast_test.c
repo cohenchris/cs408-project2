@@ -4,7 +4,7 @@
 #include<unistd.h>
 #include<malloc.h>
 
-#define THREAD_NUM 10
+#define THREAD_NUM 63
 
 /*
  * PTHREAD_COND_BROADCAST TEST
@@ -12,9 +12,9 @@
  * to make all of the threads start executing again.
  */
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t wait_cond = PTHREAD_COND_INITIALIZER;
 
 int g_waiting_count = 0;
 
@@ -31,7 +31,7 @@ void *t1(void * args) {
 
   g_waiting_count +=1;
   if (g_waiting_count == THREAD_NUM) {
-    pthread_cond_signal(&wait_cond);
+    //pthread_cond_signal(&wait_cond);
   }
   pthread_cond_wait(&cond, &lock);
   printf("Thread %d terminating\n", arguments->id);
@@ -42,7 +42,7 @@ void *t1(void * args) {
 void *t2(void * args) {
   pthread_mutex_lock(&lock);
   while (g_waiting_count < THREAD_NUM) {
-    pthread_cond_wait(&wait_cond, &lock);
+    //pthread_cond_wait(&wait_cond, &lock);
   }
   printf("\nBROADCASTING CONDITION SIGNAL\n\n");
   pthread_cond_broadcast(&cond);
@@ -58,6 +58,8 @@ int main() {
     args[i].id = i + 1;
     pthread_create(&threads[i], NULL, &t1, (void *)&args[i]);
   }
+
+  sleep(1);
 
   pthread_t dispatcher;
   pthread_create(&dispatcher, NULL, &t2, NULL);

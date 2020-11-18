@@ -47,5 +47,7 @@ int main() {
     pthread_join(thread1, NULL);
     pthread_join(thread2, NULL);
 
+    free(name);
+    name = NULL;
     return return_code;
 }
