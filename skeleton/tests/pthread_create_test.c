@@ -16,6 +16,8 @@ struct multipliers {
     int y;
 };
 
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
 void *multiply(void * args) {
   struct multipliers *arguments = (struct multipliers *)args;
   int result = (arguments->x) * (arguments->y);
@@ -29,24 +31,14 @@ int main() {
   struct multipliers args[THREAD_NUM];
 
   for (int i = 0; i < THREAD_NUM; i++) {
+    pthread_mutex_lock(&lock);
     args[i].x = i;
     args[i].y = i;
+    pthread_mutex_unlock(&lock);
 
     pthread_create(&threads[i], NULL, &multiply, (void *)&args[i]);
-    printf("RETURNED FROM CREATE\n");
   }
 
-/*
-  for (int i = 0; i < THREAD_NUM; i++) {
-    int return_val;
-    int expected = i*i;
-    //pthread_join(threads[i], (void **)&return_val);
-    if ((int)return_val != expected) {
-      printf("Expected %d, got %d\n", expected, (int)return_val);
-      pthread_exit(NULL);
-    }
-  }
-  */
   pthread_exit(NULL);
   return 0;
 }
