@@ -11,15 +11,4 @@
 - Complete
 
 ### 4.5 - PCT Scheduling
-- In progress
-
-
-
-### Notes:
--Structs for args in pthread_create
-
-
-## TODO:
-- 4.5 PCT Scheduling
-- coverage.pdf
-- Include all PCT functions in 'omit' array
+- N/A
