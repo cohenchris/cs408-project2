@@ -55,8 +55,9 @@ int main() {
   pthread_create(&thread1, NULL, &t1, NULL);
   pthread_create(&thread2, NULL, &t2, NULL);
 
-  pthread_join(thread1, NULL);
-  pthread_join(thread2, NULL);
+  // pthread_join(thread1, NULL);
+  // pthread_join(thread2, NULL);
+  pthread_exit(NULL);
 
   // If it reaches here, it succeeds. If it deadlocks, the framework will catch it and return 1.
   return 0;

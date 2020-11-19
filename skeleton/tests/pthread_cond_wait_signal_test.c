@@ -42,8 +42,9 @@ int main() {
   sleep(0.1);
   pthread_create(&thread2, NULL, &t2, NULL);
 
-  pthread_join(thread1, NULL);
-  pthread_join(thread2, NULL);
+  //pthread_join(thread1, NULL);
+  //pthread_join(thread2, NULL);
+  pthread_exit(NULL);
 
   // If the program executes to here, it succeeds.
   return 0;

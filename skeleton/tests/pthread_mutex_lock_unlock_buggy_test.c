@@ -50,8 +50,9 @@ int main() {
   pthread_create(&thread1, NULL, &t1, NULL);
   pthread_create(&thread2, NULL, &t2, NULL);
 
-  pthread_join(thread1, NULL);
-  pthread_join(thread2, NULL);
+  // pthread_join(thread1, NULL);
+  // pthread_join(thread2, NULL);
+  pthread_exit(NULL);
 
   printf("g_shared_var = %d\n", g_shared_var);
   if (g_shared_var == 3657) {

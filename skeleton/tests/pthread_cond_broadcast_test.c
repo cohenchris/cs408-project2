@@ -4,7 +4,7 @@
 #include<unistd.h>
 #include<malloc.h>
 
-#define THREAD_NUM 1
+#define THREAD_NUM 10
 
 /*
  * PTHREAD_COND_BROADCAST TEST
@@ -32,10 +32,6 @@ void *t1(void * args) {
 
   pthread_mutex_lock(&lock);
   g_waiting_count += 1;
-  // if (g_waiting_count == THREAD_NUM) {
-  //   printf("WE'RE READY!!!!\n");
-  //   pthread_cond_signal(&wait_cond);
-  // }
   pthread_cond_wait(&cond, &lock);
   pthread_mutex_unlock(&lock);
   printf("THREAD %d TERMINATING\n", arguments->id);
@@ -44,10 +40,6 @@ void *t1(void * args) {
 
 void *t2(void * args) {
   pthread_mutex_lock(&dispatch_lock);
-  // while (g_waiting_count < THREAD_NUM) {
-  //   printf("NOT YET!!!\n");
-  //   pthread_cond_wait(&wait_cond, &dispatch_lock);
-  // }
   pthread_mutex_unlock(&dispatch_lock);
   printf("\nBROADCASTING CONDITION SIGNAL\n\n");
   pthread_cond_broadcast(&cond);

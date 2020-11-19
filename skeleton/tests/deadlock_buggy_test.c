@@ -44,8 +44,9 @@ int main() {
   pthread_create(&thread1, NULL, &t1, NULL);
   pthread_create(&thread2, NULL, &t2, NULL);
 
-  pthread_join(thread1, NULL);
-  pthread_join(thread2, NULL);
+  // pthread_join(thread1, NULL);
+  // pthread_join(thread2, NULL);
+  pthread_exit(NULL);
 
   // If it somehow reaches here, it hasn't deadlocked, and the program was a success
   return 0;
