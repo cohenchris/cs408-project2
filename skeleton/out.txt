@@ -1,0 +1,331 @@
+Testlib loaded!
+Stacktraces is 0
+Algorithm ID is 2
+Seed is 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+CALL pthread_mutex_lock(0x557f854b6060)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+RETURN pthread_mutex_lock(0x557f854b6060) = 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+CALL pthread_mutex_unlock(0x557f854b6060)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+RETURN pthread_mutex_unlock(0x557f854b6060) = 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+CALL pthread_create(0x7ffd69e17f00, (nil), 0x557f852b4a40, 0x7ffd69e17efc)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+RETURN pthread_create(0x7ffd69e17f00, (nil), 0x557f852b4a40, 0x7ffd69e17efc) = 0
+THREAD 0 GOT TO THE END OF CREATE
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+CALL pthread_create(0x7ffd69e17ef0, (nil), 0x557f852b4af0, (nil))
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 1
+HIGHEST PRIORITY THREAD 0 STATE: 1
+CONTINUING THREAD 0
+RETURN pthread_create(0x7ffd69e17ef0, (nil), 0x557f852b4af0, (nil)) = 0
+THREAD 0 GOT TO THE END OF CREATE
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+CONTINUING THREAD 0
+CALL pthread_exit((nil)) from THREAD 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+
+START THREAD 2
+THREAD CREATED (1, 203066)
+CONTINUING THREAD 0
+THREAD EXITED IN PTHREAD EXIT (0, 203065)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+THREAD CREATED (2, 203067)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+CONTINUING THREAD 2
+
+START THREAD 2
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+CONTINUING THREAD 2
+CALL pthread_mutex_lock(0x557f854b6120)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+CONTINUING THREAD 2
+
+BLOCK THREAD 1
+RETURN pthread_mutex_lock(0x557f854b6120) = 0
+NOT YET!!!
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+CONTINUING THREAD 2
+CALL pthread_cond_wait(0x557f854b60a0, 0x557f854b6120)
+PTHREAD_COND_WAIT --> Queuing TID 203067
+QUEUING!
+######################################
+There are 1 condition variables!
+QUEUE FOR COND VAR 0: [ 203067, ]
+######################################
+UNLOCKING MUTEX AND WAITING
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+
+BLOCK THREAD 2
+RETURN pthread_cond_wait(0x557f854b60a0, 0x557f854b6120) = 0
+THREAD 21887 WAITING FOR CONDITION
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+NOT YET!!!
+HIGHEST PRIORITY THREAD 1 STATE: 1
+CONTINUING THREAD 1
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+CALL pthread_mutex_lock(0x557f854b6160)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+BLOCK THREAD 2
+CONTINUING THREAD 1
+RETURN pthread_mutex_lock(0x557f854b6160) = 0
+WE'RE READY!!!!
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD 1 STATE: 1
+CONTINUING THREAD 1
+CALL pthread_cond_signal(0x557f854b60a0)
+DEQUEUING!
+######################################
+There are 1 condition variables!
+QUEUE FOR COND VAR 0: [ ]
+######################################
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+
+START THREAD 2
+
+BLOCK THREAD 1
+RETURN pthread_cond_signal(0x557f854b60a0) = 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 1
+HIGHEST PRIORITY THREAD 2 STATE: 1
+CALL pthread_cond_wait(0x557f854b60a0, 0x557f854b6120)
+PTHREAD_COND_WAIT --> Queuing TID 203067
+QUEUING!
+
+START THREAD 2
+######################################
+There are 1 condition variables!
+QUEUE FOR COND VAR 0: [ 203067, ]
+######################################
+UNLOCKING MUTEX AND WAITING
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+
+BLOCK THREAD 2
+
+BLOCK THREAD 1
+CALL pthread_cond_wait(0x557f854b60e0, 0x557f854b6160)
+PTHREAD_COND_WAIT --> Queuing TID 203066
+QUEUING!
+######################################
+There are 2 condition variables!
+QUEUE FOR COND VAR 0: [ 203067, ]
+QUEUE FOR COND VAR 1: [ 203066, ]
+######################################
+UNLOCKING MUTEX AND WAITING
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 2
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+RETURN pthread_cond_wait(0x557f854b60a0, 0x557f854b6120) = 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 2
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+CONTINUING THREAD 2
+CONTINUING THREAD 1
+RETURN pthread_cond_wait(0x557f854b60e0, 0x557f854b6160) = 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 2
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+CONTINUING THREAD 1
+CALL pthread_mutex_unlock(0x557f854b6160)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 2
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+CONTINUING THREAD 1
+RETURN pthread_mutex_unlock(0x557f854b6160) = 0
+THREAD 21887 TERMINATING
+CALL pthread_mutex_unlock(0x557f854b6120)
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 3
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+CONTINUING THREAD 1
+CALL pthread_exit((nil)) from THREAD 1
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 3
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+CONTINUING THREAD 2
+RETURN pthread_mutex_unlock(0x557f854b6120) = 0
+
+BROADCASTING CONDITION SIGNAL
+
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 3
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 3
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD -1 STATE: 0
+CONTINUING THREAD 2
+CONTINUING THREAD 1
+THREAD EXITED IN PTHREAD EXIT (1, 203066)
+CALL pthread_cond_broadcast(0x557f854b60e0)
+DEQUEUING!
+######################################
+There are 2 condition variables!
+QUEUE FOR COND VAR 0: [ 203067, ]
+QUEUE FOR COND VAR 1: [ ]
+######################################
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 2
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+
+BLOCK THREAD 2
+RETURN pthread_cond_broadcast(0x557f854b60e0) = 0
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 3
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+CONTINUING THREAD 2
+CALL pthread_exit((nil)) from THREAD 2
+
+PRIORITIES
+thread num: 0, tid: 203065, priority: 89383, state: 3
+thread num: 1, tid: 203066, priority: 30886, state: 1
+thread num: 2, tid: 203067, priority: 92777, state: 3
+HIGHEST PRIORITY THREAD 1 STATE: 1
+
+START THREAD 1
+CONTINUING THREAD 2
+THREAD EXITED IN PTHREAD EXIT (2, 203067)

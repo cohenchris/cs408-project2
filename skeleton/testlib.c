@@ -115,14 +115,11 @@ struct thread_struct EMPTY_THREAD_STRUCT;
  * MUST ALWAYS BE CALLED WITHIN sem_wait(&g_global_vars_lock); and sem_post(&g_global_vars_lock);
  */
 int get_thread_index(long int tid) {
-  //sem_wait(&g_global_vars_lock);
   for (int i = 0; i < MAX_THREADS; i++) {
     if (g_thread_ids[i] == tid) {
-      sem_post(&g_global_vars_lock);
       return i;
     }
   }
-  //sem_post(&g_global_vars_lock);
   return -1;
 }
 
@@ -275,7 +272,6 @@ void run_scheduling_algorithm() {
       INFO("CONTINUING THREAD %d\n", curr_thread);
       fflush(stdout);
       sem_post(&g_print_lock);
-      //sem_post(&g_global_vars_lock);
     }
     else {
       sem_wait(&g_print_lock);
@@ -287,12 +283,15 @@ void run_scheduling_algorithm() {
       sem_post(&g_semaphores[highest_priority]);
 
       // stop current thread unless it is in terminated state
-      if (g_threads[curr_thread].state != THREAD_TERMINATED) {
+      sem_wait(&g_global_vars_lock);
+      int curr_state = g_threads[curr_thread].state;
+      sem_post(&g_global_vars_lock);
+  
+      if (curr_state != THREAD_TERMINATED) {
         sem_wait(&g_print_lock);
         INFO("\nBLOCK THREAD %d\n", curr_thread);
         fflush(stdout);
         sem_post(&g_print_lock);
-        //sem_post(&g_global_vars_lock);
 
         sem_wait(&g_semaphores[curr_thread]);
       } else {
@@ -300,7 +299,6 @@ void run_scheduling_algorithm() {
         INFO("CONTINUING THREAD %d\n", curr_thread);
         fflush(stdout);
         sem_post(&g_print_lock);
-        //sem_post(&g_global_vars_lock);
       }
     }
   }
@@ -362,8 +360,10 @@ void *interpose_start_routine(void *argument) {
   sem_post(&g_print_lock);
 
   run_scheduling_algorithm();
+  sem_wait(&g_print_lock);
   INFO("THREAD %d GOT TO THE END OF INTERPOSE\n", thread_index);
   fflush(stdout);
+  sem_post(&g_print_lock);
   return return_val;
 }
 
@@ -396,8 +396,10 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
   sem_post(&g_print_lock);
 
   sem_wait(&g_global_vars_lock);
+  sem_wait(&g_print_lock);
   INFO("THREAD %d GOT TO THE END OF CREATE\n", get_thread_index(gettid()));
   fflush(stdout);
+  sem_post(&g_print_lock);
   sem_post(&g_global_vars_lock);
   return return_val;
 }
@@ -538,8 +540,10 @@ void queue(pthread_cond_t *cond) {
   g_threads[current_thread].state = THREAD_BLOCKED;
 
   if (DEBUG) {
+    sem_wait(&g_print_lock);
     INFO("QUEUING!\n");
     fflush(stdout);
+    sem_post(&g_print_lock);
     print_queue();
   }
   sem_post(&g_global_vars_lock);
@@ -590,8 +594,10 @@ int dequeue(pthread_cond_t *cond) {
   cond_vars_queue[cond_var_index][MAX_THREADS - 1] = EMPTY_THREAD_STRUCT;
 
   if (DEBUG) {
+    sem_wait(&g_print_lock);
     INFO("DEQUEUING!\n");
     fflush(stdout);
+    sem_post(&g_print_lock);
     print_queue();
   }
 
@@ -620,33 +626,41 @@ int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex) {
   stacktrace();
   sem_post(&g_print_lock);
 
+  sem_wait(&g_global_vars_lock);
+  int current_thread = get_thread_index(gettid());
+  sem_post(&g_global_vars_lock);
+
   int return_val = -1;
   if (get_algorithm_ID() == kAlgorithmPCT) {
-    sem_wait(&g_global_vars_lock);
     // Run special version of pthread_cond_wait for PCT
   
     // Queue current thread into the queue for 'cond'
-    INFO("Queuing TID %d\n", gettid());
-    queue(cond);
-  
-    int current_thread = get_thread_index(gettid());
-  
-    // unlock mutex
-    pthread_mutex_unlock(mutex);
-    sem_wait(&g_semaphores[current_thread]); // will block until unlocked by PCT
-    // lock mutex
-    pthread_mutex_lock(mutex);
+    sem_wait(&g_print_lock);
+    INFO("PTHREAD_COND_WAIT --> Queuing TID %d\n", gettid());
+    fflush(stdout);
+    sem_post(&g_print_lock);
 
+
+    queue(cond);  // Queues the thread into "cond's" queue, also sets state to blocked
+
+    sem_wait(&g_print_lock);
+    INFO("UNLOCKING MUTEX AND WAITING\n");
+    sem_post(&g_print_lock);
+
+    // Temporarily release the mutex to prevent deadlocks
+    orig_mutex_unlock(mutex);
+    // Reschedule to switch this thread out while it waits for the condition signal
+    run_scheduling_algorithm();
+    // Once we're back, take hold of the mutex again
+    orig_mutex_lock(mutex);
     // by now, thread will be dequeued from conditional variable queue
     return_val = 0;
-    sem_post(&g_global_vars_lock);
   }
   else {
     // no special PCT case - just run original function
     return_val = orig_cond_wait(cond, mutex);
+    run_scheduling_algorithm();
   }
-
-  run_scheduling_algorithm();
 
   sem_wait(&g_print_lock);  
   INFO("RETURN pthread_cond_wait(%p, %p) = %d\n", cond, mutex, return_val);
@@ -671,7 +685,6 @@ int pthread_cond_signal(pthread_cond_t *cond) {
 
   int return_val = -1;
   if (get_algorithm_ID() == kAlgorithmPCT) {
-    sem_wait(&g_global_vars_lock);
     // Run special version of pthread_cond_signal for PCT
 
     // find highest priority runnable thread thread_id
@@ -681,7 +694,6 @@ int pthread_cond_signal(pthread_cond_t *cond) {
       sem_post(&g_semaphores[dequeued_index]);
       return_val = 0;
     }
-    sem_post(&g_global_vars_lock);
   }
   else {
     // no special PCT case - just run original function
@@ -713,7 +725,6 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
 
   int return_val = -1;
   if (get_algorithm_ID() == kAlgorithmPCT) {
-    sem_wait(&g_global_vars_lock);
     // Run special version of pthread_cond_broadcast for PCT
     while (true) {
       int dequeued_index = dequeue(cond);
@@ -726,7 +737,6 @@ int pthread_cond_broadcast(pthread_cond_t *cond) {
       }
     }
     return_val = 0;
-    sem_post(&g_global_vars_lock);
   }
   else {
     // no special PCT case - just run original function
