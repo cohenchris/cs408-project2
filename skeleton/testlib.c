@@ -40,6 +40,23 @@ sem_t g_print_lock;
 // General lock used mostly in PCT
 sem_t g_general_lock;
 
+// General lock used mostly in PCT
+sem_t g_general_lock;
+sem_t g_PCT_lock;
+sem_t g_PCT_main_lock;
+sem_t g_PCT_main_init_lock;
+sem_t g_PCT_thread_start_lock;
+sem_t g_PCT_thread_after_create_lock;
+sem_t g_PCT_thread_before_create_lock;
+sem_t g_PCT_thread_terminate_lock;
+sem_t g_PCT_thread_yield_lock;
+sem_t g_PCT_thread_lock_lock;
+sem_t g_PCT_thread_unlock_lock;
+sem_t g_PCT_thread_trylock_lock;
+sem_t g_PCT_find_highest_priority_lock;
+sem_t g_PCT_run_highest_priority_lock;
+sem_t g_PCT_find_next_available_thread;
+
 // Total number of threads that are active
 int g_thread_count = 0;
 int STACKTRACE_THREAD_ID = -1;
@@ -188,9 +205,7 @@ void stacktrace() {
 ////////////////////////////////////////////////////
 
 int find_highest_priority() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_find_highest_priority_lock);
 
   // Find the highest priority thread available to be active
   int highest_priorty = -1;
@@ -203,14 +218,12 @@ int find_highest_priority() {
     } 
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_find_highest_priority_lock);
   return thread_index;
 }
 
 void run_highest_priority() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_run_highest_priority_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -243,14 +256,12 @@ void run_highest_priority() {
     // Let PCT_thread_start() know that this thread can run
     sem_post(&(g_semaphores[g_current_thread]));
   }
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_run_highest_priority_lock);
   return;
 }
 
 int find_next_available_thread() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_find_next_available_thread);
 
   // Find the highest priority thread available to be active
   int highest_priorty = -1;
@@ -263,14 +274,12 @@ int find_next_available_thread() {
     } 
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_find_next_available_thread);
   return thread_index;
 }
 
 void PCT_init_main() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_main_init_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -312,14 +321,12 @@ void PCT_init_main() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_main_init_lock);
   return;
 }
 
 void PCT_thread_start() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_start_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -346,14 +353,12 @@ void PCT_thread_start() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_start_lock);
   return;
 }
 
 void PCT_thread_after_create() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_after_create_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -377,14 +382,12 @@ void PCT_thread_after_create() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_after_create_lock);
   return;
 }
 
 void PCT_thread_before_create() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_before_create_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -414,14 +417,12 @@ void PCT_thread_before_create() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_before_create_lock);
   return;
 }
 
 void PCT_thread_terminate() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_terminate_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -447,14 +448,12 @@ void PCT_thread_terminate() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_terminate_lock);
   return;
 }
 
 void PCT_thread_yield() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_yield_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -503,14 +502,15 @@ void PCT_thread_yield() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_yield_lock);
   return;
 }
 
 void PCT_thread_lock() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_lock_lock);
+
+  // pthread_mutex_trylock_type orig_mutex_trylock;
+  //orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
   // pthread_mutex_trylock_type orig_mutex_trylock;
   //orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
@@ -550,14 +550,12 @@ void PCT_thread_lock() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_lock_lock);
   return;
 }
 
 void PCT_thread_unlock() {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_thread_unlock_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -592,7 +590,36 @@ void PCT_thread_unlock() {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_thread_unlock_lock);
+  return;
+}
+
+void PCT_thread_trylock() {
+  sem_wait(&g_PCT_thread_trylock_lock);
+
+  if (DEBUG) {
+    sem_wait(&g_print_lock);
+    INFO("ENTER PCT_thread_trylock() - g_runnable_threads = %d - g_current_thread = %d \n", 
+         g_runnable_threads, g_current_thread);
+    fflush(stdout);
+    sem_post(&g_print_lock);
+  }
+
+  if (g_thread_mutexes[g_current_thread] == g_current_mutex) {
+    g_mutex_locked = 0;
+  } else {
+    g_mutex_locked = 1;
+  }
+
+  if (DEBUG) {
+    sem_wait(&g_print_lock);
+    INFO("EXITING PCT_thread_trylock() - g_runnable_threads = %d - g_current_thread = %d \n", 
+         g_runnable_threads, g_current_thread);
+    fflush(stdout);
+    sem_post(&g_print_lock);
+  }
+
+  sem_post(&g_PCT_thread_trylock_lock);
   return;
 }
 
@@ -628,9 +655,7 @@ void PCT_thread_trylock() {
 }
 
 void PCT(int pct_thread_state) {
-  sem_t PCT_lock;
-  sem_init(&PCT_lock, 0, 1);
-  sem_wait(&PCT_lock);
+  sem_wait(&g_PCT_main_lock);
 
   if (DEBUG) {
     sem_wait(&g_print_lock);
@@ -684,7 +709,7 @@ void PCT(int pct_thread_state) {
     sem_post(&g_print_lock);
   }
 
-  sem_post(&PCT_lock);
+  sem_post(&g_PCT_main_lock);
   return;
 }
 
@@ -1132,6 +1157,23 @@ static __attribute__((constructor (200))) void init_testlib(void) {
 
   // General lock used mostly in PCT
   sem_init(&g_general_lock, 0, 1);
+  
+  sem_init(&g_PCT_lock, 0, 1);
+  sem_init(&g_PCT_main_lock, 0, 1);
+  sem_init(&g_PCT_thread_start_lock, 0, 1);
+  sem_init(&g_PCT_thread_after_create_lock, 0, 1);
+  sem_init(&g_PCT_thread_before_create_lock, 0, 1);
+  sem_init(&g_PCT_thread_terminate_lock, 0, 1);
+  sem_init(&g_PCT_thread_yield_lock, 0, 1);
+  sem_init(&g_PCT_thread_lock_lock, 0, 1);
+  sem_init(&g_PCT_thread_unlock_lock, 0, 1);
+  sem_init(&g_PCT_thread_trylock_lock, 0, 1);
+  sem_init(&g_PCT_find_highest_priority_lock, 0, 1);
+  sem_init(&g_PCT_run_highest_priority_lock, 0, 1);
+  sem_init(&g_PCT_find_next_available_thread, 0, 1);
+  sem_init(&g_PCT_main_init_lock, 0, 1);
+
+  sem_wait(&g_PCT_lock);
 
   // Needed for PCT
   g_threads = (struct thread_struct*) malloc(MAX_THREADS * sizeof(struct thread_struct));
@@ -1146,8 +1188,20 @@ static __attribute__((constructor (200))) void init_testlib(void) {
     g_thread_mutexes[i] = NULL;
   }
 
+  sem_post(&g_PCT_lock);
+
+  sem_wait(&g_print_lock);
+  INFO("Calling PCT init_main\n");
+  fflush(stdout);
+  sem_post(&g_print_lock);
+
   // May want to put a conditional statement around this if you are not running the PCT algorithm
   PCT(PCT_INIT_MAIN);
+
+  sem_wait(&g_print_lock);
+  INFO("Returning PCT init_main\n");
+  fflush(stdout);
+  sem_post(&g_print_lock);
 
   g_orig_mutex_unlock(&init_lock);
 
