@@ -32,11 +32,13 @@ typedef int (*pthread_mutex_unlock_type)();
 typedef int (*pthread_mutex_trylock_type)();
 
 // Needed for PCT
-#define DEBUG true
+#define DEBUG false
 #define MAX_THREADS 64
 
 sem_t g_count_lock;
 sem_t g_print_lock;
+// General lock used mostly in PCT
+sem_t g_general_lock;
 
 // General lock used mostly in PCT
 sem_t g_general_lock;
@@ -510,6 +512,9 @@ void PCT_thread_lock() {
   // pthread_mutex_trylock_type orig_mutex_trylock;
   //orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
+  // pthread_mutex_trylock_type orig_mutex_trylock;
+  //orig_mutex_trylock = (pthread_mutex_trylock_type)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+
   if (DEBUG) {
     sem_wait(&g_print_lock);
     INFO("ENTER PCT_thread_lock() - g_runnable_threads = %d - g_current_thread = %d \n", 
@@ -615,6 +620,37 @@ void PCT_thread_trylock() {
   }
 
   sem_post(&g_PCT_thread_trylock_lock);
+  return;
+}
+
+void PCT_thread_trylock() {
+  sem_t PCT_lock;
+  sem_init(&PCT_lock, 0, 1);
+  sem_wait(&PCT_lock);
+
+  if (DEBUG) {
+    sem_wait(&g_print_lock);
+    INFO("ENTER PCT_thread_trylock() - g_runnable_threads = %d - g_current_thread = %d \n", 
+         g_runnable_threads, g_current_thread);
+    fflush(stdout);
+    sem_post(&g_print_lock);
+  }
+
+  if (g_thread_mutexes[g_current_thread] == g_current_mutex) {
+    g_mutex_locked = 0;
+  } else {
+    g_mutex_locked = 1;
+  }
+
+  if (DEBUG) {
+    sem_wait(&g_print_lock);
+    INFO("EXITING PCT_thread_trylock() - g_runnable_threads = %d - g_current_thread = %d \n", 
+         g_runnable_threads, g_current_thread);
+    fflush(stdout);
+    sem_post(&g_print_lock);
+  }
+
+  sem_post(&PCT_lock);
   return;
 }
 
@@ -1121,6 +1157,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
 
   // General lock used mostly in PCT
   sem_init(&g_general_lock, 0, 1);
+  
   sem_init(&g_PCT_lock, 0, 1);
   sem_init(&g_PCT_main_lock, 0, 1);
   sem_init(&g_PCT_thread_start_lock, 0, 1);
@@ -1137,6 +1174,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
   sem_init(&g_PCT_main_init_lock, 0, 1);
 
   sem_wait(&g_PCT_lock);
+
   // Needed for PCT
   g_threads = (struct thread_struct*) malloc(MAX_THREADS * sizeof(struct thread_struct));
   g_semaphores = (sem_t *) malloc(MAX_THREADS * sizeof(sem_t));
@@ -1149,6 +1187,7 @@ static __attribute__((constructor (200))) void init_testlib(void) {
     // Initialize the array of mutexes
     g_thread_mutexes[i] = NULL;
   }
+
   sem_post(&g_PCT_lock);
 
   sem_wait(&g_print_lock);
